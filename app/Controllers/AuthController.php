@@ -4,6 +4,7 @@ namespace App\Controllers;
 
 use App\Core\Csrf;
 use App\Core\Database;
+use App\Core\SessionManager;
 
 final class AuthController
 {
@@ -71,14 +72,14 @@ final class AuthController
             return;
         }
 
-        session_regenerate_id(true);
-        $_SESSION['user_id'] = (int)$user['id'];
+        SessionManager::establish((int)$user['id']);
         header('Location: /dashboard', true, 303);
     }
 
     public function logout(): void
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) { http_response_code(419); exit('Invalid CSRF token'); }
+        SessionManager::revokeCurrent();
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $p = session_get_cookie_params();
