@@ -80,7 +80,7 @@ final class SessionManager
             $stmt = $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE id = :id AND revoked_at IS NULL');
             $stmt->execute(['id' => hash('sha256', session_id())]);
         } catch (Throwable $e) {
-            error_log('Session revocation failed: ' . $e->getMessage());
+            error_log('Session revocation failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
     }
 
@@ -108,7 +108,7 @@ final class SessionManager
             $update = $pdo->prepare('UPDATE sessions SET last_activity = NOW() WHERE id = :id');
             $update->execute(['id' => hash('sha256', session_id())]);
         } catch (Throwable $e) {
-            error_log('Authenticated session validation failed: ' . $e->getMessage());
+            error_log('Authenticated session validation failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             self::invalidate();
         }
     }
