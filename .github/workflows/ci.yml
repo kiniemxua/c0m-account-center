@@ -26,15 +26,15 @@ jobs:
             database-healthcheck: healthcheck.sh --connect --innodb_initialized
           - php-version: '8.4'
             database-image: mysql:8.4
-            database-healthcheck: mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password
+            database-healthcheck: mysqladmin ping -h 127.0.0.1 -uroot
     services:
       mariadb:
         image: ${{ matrix.database-image }}
         env:
-          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
           MARIADB_ROOT_HOST: '%'
           MARIADB_DATABASE: c0m_test
-          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_ALLOW_EMPTY_PASSWORD: '1'
           MYSQL_ROOT_HOST: '%'
           MYSQL_DATABASE: c0m_test
         ports:
@@ -49,7 +49,7 @@ jobs:
       DB_PORT: 3306
       DB_NAME: c0m_test
       DB_USER: root
-      DB_PASSWORD: ci-root-password
+      DB_PASSWORD: ''
     steps:
       - uses: actions/checkout@v4
       - name: Set up PHP
