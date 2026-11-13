@@ -18,7 +18,7 @@
 - Member profile update with validation, unique usernames, language/timezone preferences and audit logging.
 - Database-backed Super Admin, Admin and Member RBAC. Admin controllers enforce permissions server-side; member administration preserves and edits multiple selected roles rather than silently collapsing them to one.
 - Privileged status/role changes use transactions and row locks to protect the final active Super Admin; audit events commit with the change.
-- External SMTP provider and development-log provider. SMTP AUTH is rejected unless TLS or implicit SSL is configured; TLS peer and hostname verification are enabled by the stream context.
+- External SMTP provider and development-log provider. SMTP AUTH is rejected unless TLS or implicit SSL is configured; TLS peer and hostname verification are explicit, with optional private CA and peer-name configuration.
 - Installer writes config and install lock atomically, refuses to overwrite existing configuration, can recover when config was written but the lock was not, and permits retries after partial repeatable migrations.
 - Installer requires password verification before promoting an already-existing account to Super Admin.
 - Generic installer failure responses; application and installer logs record only exception class/code, not raw DB/SMTP credentials, server responses or exception messages.
@@ -35,7 +35,7 @@
 - Login session-ID rotation, server-side session creation, failed-login history, account-identifier/IP throttling, idle expiry and suspended-account invalidation.
 - Profile preference persistence and password-change notification dispatch.
 - RBAC permission grants/denials and audit insertion.
-- SMTP transaction fixture, plaintext-auth rejection and credential-pair validation.
+- SMTP protocol fixture, plaintext-auth rejection, credential-pair validation, STARTTLS handshake, trusted CA, hostname mismatch rejection, AUTH failure, greeting timeout and unavailable-server failure.
 - Installer HTTP failure on database connection, partial migration failure caused by restricted DB privileges, safe retry, and existing-account password-verification behavior.
 - HTTP router requests for login rendering, security headers, CSRF rejection, unauthenticated admin access denial and unknown routes.
 - Concurrent transaction test that races two Super Admin removals and verifies that one active Super Admin remains.
@@ -45,7 +45,7 @@
 
 - Full HTTP-level concurrent controller requests proving that the browser/session/router layer preserves the same race-condition guarantee; the DB transaction guard itself is exercised by concurrent PHP workers.
 - HTTP-level full registration, email verification, login/logout, password-reset and session-expiration journeys; current HTTP tests are router/security smoke integration, not browser E2E.
-- SMTP fixture coverage for STARTTLS handshake, certificate/hostname mismatch, AUTH rejection, timeout and server-unavailable scenarios. Current fixture validates a local SMTP message transaction without production credentials.
+- Live-provider deliverability, DNS/SPF/DKIM/DMARC and implicit-SSL interoperability are not verified by the local fixture. It uses a test-only CA and credentials, never production SMTP credentials.
 - Installer failure injection for filesystem write/rename permission failures and recovery after an interrupted config/lock write on real cPanel filesystems.
 - Full operational audit-log review, migration version tracking and a tested backup/restore procedure.
 - Independent penetration test and production deployment review.
