@@ -83,6 +83,10 @@ final class AccountController
                 'timezone' => $timezone,
             ]);
             $pdo->commit();
+            // Keep the selected account language as the guest preference too,
+            // so it remains active after the user signs out.
+            Localization::set($language);
+            Localization::writeGuestCookie($language);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
