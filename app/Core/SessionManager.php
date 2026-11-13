@@ -40,42 +40,7 @@ final class SessionManager
      */
     public static function requestIsSecure(): bool
     {
-        $https = strtolower((string)($_SERVER['HTTPS'] ?? ''));
-        if ($https !== '' && $https !== 'off' && $https !== '0') {
-            return true;
-        }
-
-        $remote = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
-        $forwardedProto = strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
-        if ($remote === false || $forwardedProto !== 'https') {
-            return false;
-        }
-
-        $configPath = BASE_PATH . '/config/app.php';
-        if (!is_file($configPath)) {
-            return false;
-        }
-
-        try {
-            $config = require $configPath;
-        } catch (Throwable) {
-            return false;
-        }
-        $trusted = is_array($config) ? ($config['trusted_proxies'] ?? []) : [];
-        if (!is_array($trusted)) {
-            return false;
-        }
-
-        $remotePacked = inet_pton($remote);
-        foreach ($trusted as $proxy) {
-            if (!is_string($proxy) || filter_var($proxy, FILTER_VALIDATE_IP) === false) {
-                continue;
-            }
-            if (hash_equals(inet_pton($proxy), $remotePacked)) {
-                return true;
-            }
-        }
-        return false;
+        return RequestSecurity::isHttps(BASE_PATH);
     }
 
     public static function establish(int $userId): void
