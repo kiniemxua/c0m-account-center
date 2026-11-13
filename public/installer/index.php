@@ -78,13 +78,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
                 );
 
-                $sql = file_get_contents($root . '/database/migrations/001_core.sql');
-                if ($sql === false) {
-                    throw new RuntimeException('Core migration file is missing.');
+                $migrations = glob($root . '/database/migrations/*.sql') ?: [];
+                sort($migrations, SORT_STRING);
+                if ($migrations === []) {
+                    throw new RuntimeException('No database migrations were found.');
                 }
-                // 001_core.sql uses CREATE TABLE IF NOT EXISTS so a retry after
-                // MySQL's non-transactional DDL does not destroy partial progress.
-                $pdo->exec($sql);
+                // DDL is not transactional on MySQL. Each shipped migration is
+                // designed to be repeatable so an interrupted setup can be retried.
+                foreach ($migrations as $migrationFile) {
+                    $sql = file_get_contents($migrationFile);
+                    if ($sql === false) {
+                        throw new RuntimeException('A database migration could not be read.');
+                    }
+                    $pdo->exec($sql);
+                }
 
                 $find = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
                 $find->execute(['email' => $email]);
@@ -103,6 +110,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                 }
                 $profile = $pdo->prepare('INSERT IGNORE INTO user_profiles (user_id) VALUES (:id)');
                 $profile->execute(['id' => (int)$id]);
+                $role = $pdo->prepare(
+                    "INSERT IGNORE INTO user_roles (user_id, role_id)
+                     SELECT :user_id, id FROM roles WHERE role_key = 'super_admin'"
+                );
+                $role->execute(['user_id' => (int)$id]);
 
                 if (!is_dir($storagePath) && !mkdir($storagePath, 0750, true) && !is_dir($storagePath)) {
                     throw new RuntimeException('Cannot create storage directory.');
