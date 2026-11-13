@@ -1,0 +1,179 @@
+<?php
+declare(strict_types=1);
+
+define('BASE_PATH', dirname(__DIR__));
+
+function installerCheck(bool $condition, string $message): void
+{
+    if (!$condition) {
+        throw new RuntimeException($message);
+    }
+}
+
+$dbHost = getenv('DB_HOST') ?: '127.0.0.1';
+$dbPort = (int)(getenv('DB_PORT') ?: 3306);
+$dbName = getenv('DB_NAME') ?: 'c0m_test';
+$dbUser = getenv('DB_USER') ?: 'root';
+$dbPassword = getenv('DB_PASSWORD') ?: '';
+$root = new PDO(
+    sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $dbHost, $dbPort, $dbName),
+    $dbUser,
+    $dbPassword,
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+);
+
+$configPath = BASE_PATH . '/config/database.php';
+$lockPath = BASE_PATH . '/storage/install.lock';
+installerCheck(!is_file($configPath) && !is_file($lockPath), 'Installer test requires a clean configuration and install lock.');
+$limitedUser = 'c0m_installer_limited';
+$limitedPassword = 'InstallerLimitedPassword-OnlyForCI';
+$root->exec("CREATE USER IF NOT EXISTS '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
+$root->exec("GRANT SELECT, INSERT, UPDATE, CREATE, INDEX, REFERENCES ON `{$dbName}`.* TO '{$limitedUser}'@'%'");
+
+$portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+installerCheck(is_resource($portSocket), 'Could not reserve an installer HTTP port.');
+$address = stream_socket_get_name($portSocket, false);
+$port = (int)substr(strrchr($address, ':'), 1);
+fclose($portSocket);
+
+$command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public'];
+$process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+installerCheck(is_resource($process), 'Could not start installer HTTP server.');
+fclose($pipes[0]);
+
+try {
+    $base = 'http://127.0.0.1:' . $port;
+    $request = static function (string $method, string $body = '', string $cookie = '') use ($base): array {
+        $headers = ['Connection: close'];
+        if ($cookie !== '') {
+            $headers[] = 'Cookie: ' . $cookie;
+        }
+        if ($method === 'POST') {
+            $headers[] = 'Content-Type: application/x-www-form-urlencoded';
+        }
+        $context = stream_context_create(['http' => [
+            'method' => $method,
+            'header' => implode("\r\n", $headers),
+            'content' => $body,
+            'ignore_errors' => true,
+            'timeout' => 8,
+        ]]);
+        $response = @file_get_contents($base . '/installer/', false, $context);
+        $rawHeaders = $http_response_header ?? [];
+        $status = 0;
+        foreach ($rawHeaders as $header) {
+            if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $match)) {
+                $status = (int)$match[1];
+            }
+        }
+        return ['status' => $status, 'headers' => $rawHeaders, 'body' => $response === false ? '' : $response];
+    };
+    $cookieFrom = static function (array $response): string {
+        foreach ($response['headers'] as $header) {
+            if (stripos($header, 'Set-Cookie: c0m_install=') === 0) {
+                return explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+            }
+        }
+        return '';
+    };
+    $csrfFrom = static function (array $response): string {
+        return preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $response['body'], $m) ? $m[1] : '';
+    };
+    $post = static function (string $csrf, array $fields, string $cookie) use ($request): array {
+        return $request('POST', http_build_query(['_csrf' => $csrf] + $fields), $cookie);
+    };
+
+    $first = $request('GET');
+    installerCheck($first['status'] === 200, 'Installer must render over real HTTP.');
+    $cookie = $cookieFrom($first);
+    $csrf = $csrfFrom($first);
+    installerCheck($cookie !== '' && $csrf !== '', 'Installer must issue a session cookie and CSRF token.');
+
+    $badConnection = $post($csrf, [
+        'host' => '127.0.0.1', 'port' => '1', 'name' => $dbName, 'user' => $dbUser,
+        'password' => 'DO_NOT_LEAK_DATABASE_PASSWORD', 'admin_name' => 'CI Admin',
+        'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+    ], $cookie);
+    installerCheck($badConnection['status'] === 200 && str_contains($badConnection['body'], 'Installation failed.'), 'Database connection failure must return a generic recoverable error.');
+    installerCheck(!str_contains($badConnection['body'], 'DO_NOT_LEAK_DATABASE_PASSWORD'), 'Database credentials must not appear in installer output.');
+    installerCheck(!is_file($configPath) && !is_file($lockPath), 'A failed database connection must not leave config or install lock behind.');
+
+    $partial = $post($csrf, [
+        'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $limitedUser,
+        'password' => $limitedPassword, 'admin_name' => 'CI Admin',
+        'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+    ], $cookie);
+    installerCheck($partial['status'] === 200 && str_contains($partial['body'], 'Installation failed.'), 'A migration permission failure must be reported as recoverable.');
+    installerCheck(!is_file($configPath) && !is_file($lockPath), 'A partial migration must not mark the application installed.');
+
+    $tables = $root->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = " . $root->quote($dbName))->fetchAll(PDO::FETCH_COLUMN);
+    installerCheck(in_array('users', $tables, true) && in_array('auth_tokens', $tables, true), 'The failure fixture must stop after core/auth migrations have created schema objects.');
+    $default = $root->query("SELECT COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = " . $root->quote($dbName) . " AND TABLE_NAME = 'user_profiles' AND COLUMN_NAME = 'language'")->fetchColumn();
+    installerCheck($default !== false && trim((string)$default, "'") !== 'vi', 'The restricted installer account must fail before the final preferences migration.');
+
+    $recovered = $post($csrf, [
+        'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
+        'password' => $dbPassword, 'admin_name' => 'CI Admin',
+        'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+    ], $cookie);
+    installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Installation locked'), 'A retry with corrected DB permissions must complete installation.');
+    installerCheck(is_file($configPath) && is_file($lockPath), 'Successful recovery must atomically persist config and install lock.');
+
+    $adminId = $root->query("SELECT id FROM users WHERE email = 'installer-ci@example.test'")->fetchColumn();
+    installerCheck($adminId !== false, 'Successful install must create the initial administrator.');
+    $adminRole = $root->prepare("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id AND r.role_key = 'super_admin'");
+    $adminRole->execute(['id' => (int)$adminId]);
+    installerCheck((int)$adminRole->fetchColumn() === 1, 'Initial administrator must receive the Super Admin role.');
+
+    @unlink($configPath);
+    @unlink($lockPath);
+    $root->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$adminId]);
+
+    // Existing accounts may only be promoted after proving possession of their password.
+    $memberPassword = 'ExistingMemberPassword-456';
+    $root->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES ('existing-member@example.test', :hash, 'Existing member', 'active', NOW())")
+        ->execute(['hash' => password_hash($memberPassword, PASSWORD_DEFAULT)]);
+    $memberId = (int)$root->lastInsertId();
+    $root->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'")->execute(['id' => $memberId]);
+
+    $again = $request('GET');
+    $cookie = $cookieFrom($again);
+    $csrf = $csrfFrom($again);
+    $wrongExistingPassword = $post($csrf, [
+        'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
+        'password' => $dbPassword, 'admin_name' => 'Existing member',
+        'admin_email' => 'existing-member@example.test', 'admin_password' => 'WrongExistingPassword-999',
+    ], $cookie);
+    installerCheck(str_contains($wrongExistingPassword['body'], 'Installation failed.'), 'Installer must reject an existing account when its password is wrong.');
+    installerCheck(!is_file($configPath) && !is_file($lockPath), 'Failed existing-account verification must not complete installation.');
+    $memberRole = $root->prepare("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id AND r.role_key = 'super_admin'");
+    $memberRole->execute(['id' => $memberId]);
+    installerCheck((int)$memberRole->fetchColumn() === 0, 'A wrong password must never promote an existing member.');
+
+    $rightExistingPassword = $post($csrf, [
+        'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
+        'password' => $dbPassword, 'admin_name' => 'Existing member',
+        'admin_email' => 'existing-member@example.test', 'admin_password' => $memberPassword,
+    ], $cookie);
+    installerCheck(str_contains($rightExistingPassword['body'], 'Installation locked'), 'A verified existing account may complete installer recovery.');
+    $memberRole->execute(['id' => $memberId]);
+    installerCheck((int)$memberRole->fetchColumn() === 1, 'Only a password-verified existing account may be promoted by the installer.');
+
+    echo "Installer recovery integration tests passed.\n";
+} finally {
+    proc_terminate($process);
+    foreach ([1, 2] as $index) {
+        if (isset($pipes[$index]) && is_resource($pipes[$index])) {
+            fclose($pipes[$index]);
+        }
+    }
+    proc_close($process);
+    @unlink($configPath);
+    @unlink($lockPath);
+    try {
+        $root->exec("DROP USER IF EXISTS '{$limitedUser}'@'%'");
+        $root->exec("DELETE FROM users WHERE email = 'existing-member@example.test'");
+    } catch (Throwable) {
+        // Preserve the original test failure; CI database is disposable.
+    }
+}
