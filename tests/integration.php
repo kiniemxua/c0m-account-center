@@ -46,6 +46,10 @@ $authMigration = file_get_contents(BASE_PATH . '/database/migrations/002_auth_fo
 assertIntegration($authMigration !== false, 'Auth migration must exist.');
 $pdo->exec($authMigration);
 $pdo->exec($authMigration); // RBAC and auth token migration must also be repeatable.
+$preferencesMigration = file_get_contents(BASE_PATH . '/database/migrations/003_account_preferences.sql');
+assertIntegration($preferencesMigration !== false, 'Account preferences migration must exist.');
+$pdo->exec($preferencesMigration);
+$pdo->exec($preferencesMigration); // Preference defaults must be safe to reapply.
 
 $email = 'ci-' . bin2hex(random_bytes(6)) . '@example.test';
 $insert = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
@@ -277,6 +281,46 @@ ob_end_clean();
 assertIntegration(http_response_code() === 429, 'The next failed attempt must be throttled by account identifier.');
 $pdo->prepare('DELETE FROM login_history WHERE email_attempted = :email')->execute(['email' => $throttleEmail]);
 App\Core\SessionManager::invalidate();
+
+// Profile preferences must validate and persist through the account controller.
+http_response_code(200);
+App\Core\SessionManager::establish((int)$registered['id']);
+$accountController = new App\Controllers\AccountController();
+$profileUsername = 'ci_' . bin2hex(random_bytes(4));
+$_POST = [
+    '_csrf' => App\Core\Csrf::token(),
+    'display_name' => 'Updated CI Profile',
+    'username' => $profileUsername,
+    'language' => 'en',
+    'timezone' => 'UTC',
+];
+ob_start();
+$accountController->updateProfile();
+ob_end_clean();
+$profileCheck = $pdo->prepare('SELECT u.display_name, p.username, p.language, p.timezone
+    FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.id = :id');
+$profileCheck->execute(['id' => (int)$registered['id']]);
+$profile = $profileCheck->fetch();
+assertIntegration($profile && $profile['display_name'] === 'Updated CI Profile' && $profile['username'] === $profileUsername
+    && $profile['language'] === 'en' && $profile['timezone'] === 'UTC', 'Account profile changes must persist validated preferences.');
+
+// Password change requires the current password, revokes all sessions and sends a notification.
+$_POST = [
+    '_csrf' => App\Core\Csrf::token(),
+    'current_password' => 'NewStrongPassword84',
+    'new_password' => 'ChangedStrongPassword91',
+    'confirm_password' => 'ChangedStrongPassword91',
+];
+ob_start();
+$accountController->changePassword();
+ob_end_clean();
+$passwordLookup->execute(['email' => $registrationEmail]);
+$changedPassword = $passwordLookup->fetch();
+assertIntegration(password_verify('ChangedStrongPassword91', $changedPassword['password_hash'] ?? ''), 'Account password change must update the password hash.');
+$notificationLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
+assertIntegration(str_contains($notificationLog, 'Your c0m.me password was changed'), 'Password change must dispatch a security notification.');
+$pdo->prepare('DELETE FROM auth_attempts WHERE action = \'password_change\' AND identifier_hash = :identifier')
+    ->execute(['identifier' => hash('sha256', 'password-change:' . (int)$registered['id'])]);
 
 
 $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$registered['id']]);
