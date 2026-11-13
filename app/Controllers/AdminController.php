@@ -55,9 +55,10 @@ final class AdminController
                  ORDER BY u.id FOR UPDATE"
             )->fetchAll(PDO::FETCH_COLUMN);
 
-            $target = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
+            $target = $pdo->prepare('SELECT id, status FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
-            if ($target->fetchColumn() === false) {
+            $targetRow = $target->fetch();
+            if (!$targetRow) {
                 throw new \RuntimeException('target_not_found');
             }
 
@@ -136,14 +137,15 @@ final class AdminController
             if (!Authorization::isSuperAdmin($actorId)) {
                 throw new \RuntimeException('actor_no_longer_super_admin');
             }
-            $target = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
+            $target = $pdo->prepare('SELECT id, status FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
-            if ($target->fetchColumn() === false) {
+            $targetRow = $target->fetch();
+            if (!$targetRow) {
                 throw new \RuntimeException('target_not_found');
             }
 
             $currentSuper = Authorization::isSuperAdmin($targetId);
-            if ($currentSuper && $roleKey !== 'super_admin' && count($activeSuperAdmins) <= 1) {
+            if ($currentSuper && $targetRow['status'] === 'active' && $roleKey !== 'super_admin' && count($activeSuperAdmins) <= 1) {
                 throw new \RuntimeException('last_super_admin');
             }
 
