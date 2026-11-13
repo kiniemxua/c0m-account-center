@@ -54,7 +54,7 @@ If you prefer manual setup, copy config/database.example.php to config/database.
 
 ## Session policy
 
-Authentication sessions use strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax cookies. The Secure attribute is enabled for direct HTTPS or explicitly trusted HTTPS proxies. Server-side session records enforce a 30-minute idle timeout and a 12-hour absolute expiry. Account status and server-side revocation are checked on authenticated requests.
+Authentication sessions use strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax cookies. The installer uses an HttpOnly, SameSite=Strict session cookie. The Secure attribute is enabled for direct HTTPS or explicitly trusted HTTPS proxies. Server-side session records enforce a 30-minute idle timeout and a 12-hour absolute expiry. Account status and server-side revocation are checked on authenticated requests.
 
 ## Tests
 
