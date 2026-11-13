@@ -7,6 +7,9 @@ $storagePath = $root . '/storage';
 $lockPath = $storagePath . '/install.lock';
 $error = null;
 $done = is_file($lockPath);
+if ($done && !is_file($configPath)) {
+    $error = 'An installation lock exists but the database configuration is missing. Restore config/database.php from a secure backup; do not rerun setup against this database.';
+}
 
 // If the config was atomically written but the process stopped before writing
 // the lock, verify the configured database and finish the lock operation.
@@ -30,7 +33,7 @@ if (!$done && is_file($configPath)) {
         }
         $done = true;
     } catch (Throwable $e) {
-        error_log('c0m installer recovery: ' . $e->getMessage());
+        error_log('c0m installer recovery failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
         $error = 'An existing configuration was found, but its installation could not be verified. The installer will not overwrite it. Check the server error log.';
         $done = true;
     }
@@ -62,7 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
         $display = trim((string)($_POST['admin_name'] ?? 'Administrator'));
         $adminPass = (string)($_POST['admin_password'] ?? '');
 
-        if (!$email || strlen($adminPass) < 12 || $name === '' || $user === '' || $port < 1 || $port > 65535
+        if (!$email || strlen($adminPass) < 12 || $display === '' || mb_strlen($display) > 100 || $name === '' || $user === '' || $port < 1 || $port > 65535
             || !preg_match('/^[a-zA-Z0-9._:-]{1,190}$/', $host)) {
             $error = 'Enter valid database details, an email and an administrator password of at least 12 characters.';
         } elseif (is_file($configPath) || !is_writable(dirname($configPath))) {
@@ -93,10 +96,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                     $pdo->exec($sql);
                 }
 
-                $find = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+                $find = $pdo->prepare('SELECT id, password_hash, status, email_verified_at FROM users WHERE email = :email LIMIT 1');
                 $find->execute(['email' => $email]);
-                $id = $find->fetchColumn();
-                if ($id === false) {
+                $existing = $find->fetch(PDO::FETCH_ASSOC);
+                if ($existing === false) {
                     $insert = $pdo->prepare(
                         "INSERT INTO users (email,password_hash,display_name,status,email_verified_at)
                          VALUES (:email,:hash,:display,'active',NOW())"
@@ -107,6 +110,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                         'display' => $display,
                     ]);
                     $id = $pdo->lastInsertId();
+                } else {
+                    if ($existing['status'] !== 'active' || $existing['email_verified_at'] === null
+                        || !password_verify($adminPass, $existing['password_hash'])) {
+                        throw new RuntimeException('Existing administrator credentials did not verify.');
+                    }
+                    $id = (int)$existing['id'];
                 }
                 $profile = $pdo->prepare('INSERT IGNORE INTO user_profiles (user_id) VALUES (:id)');
                 $profile->execute(['id' => (int)$id]);
@@ -145,7 +154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                 if ($tmpConfig !== null) {
                     @unlink($tmpConfig);
                 }
-                error_log('c0m installer: ' . $e->getMessage());
+                error_log('c0m installer failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 $error = 'Installation failed. You may safely retry; existing schema objects are preserved. Check database permissions and server error log.';
             }
         }
