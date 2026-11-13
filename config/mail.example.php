@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 // Copy to config/mail.php. Never commit real SMTP credentials.
 return [
-    // Use development_log only on a local/staging environment.
-    'mode' => 'development_log',
+    // Set to development_log only on local/staging; logs contain one-time links.
+    'mode' => 'disabled',
     // Production SMTP example (CraneMail or another external provider):
     // 'mode' => 'smtp',
     // 'host' => 'smtp.example.com',
