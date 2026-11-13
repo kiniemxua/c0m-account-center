@@ -10,6 +10,16 @@ spl_autoload_register(static function (string $class): void {
 function localeCheck(bool $ok, string $message): void { if (!$ok) throw new RuntimeException($message); }
 $vi = App\Core\Localization::all('vi');
 $en = App\Core\Localization::all('en');
+$catalogKeys = static function (string $locale): array {
+    $source = file_get_contents(BASE_PATH . '/lang/' . $locale . '.php');
+    localeCheck($source !== false, 'Translation catalog source must be readable: ' . $locale);
+    preg_match_all('~^\\s*([\'"])(.*?)\\1\\s*=>~m', $source, $matches);
+    return $matches[2] ?? [];
+};
+foreach (['vi', 'en'] as $catalogLocale) {
+    $keys = $catalogKeys($catalogLocale);
+    localeCheck(count($keys) === count(array_unique($keys)), 'Translation catalog must not contain duplicate keys: ' . $catalogLocale);
+}
 localeCheck($vi !== [] && $en !== [], 'Both translation catalogs must load.');
 localeCheck(isset($vi['Apply'], $en['Apply']) && $vi['Apply'] === 'Áp dụng' && $en['Apply'] === 'Apply', 'Language switcher action must be translated in both catalogs.');
 foreach (['account.profile.updated','account.password.changed','user.status.changed','user.role.changed','active','pending','suspended','banned','member','admin','super_admin','NO ROLE'] as $adminKey) {
