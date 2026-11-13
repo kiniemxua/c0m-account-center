@@ -38,5 +38,7 @@ jobs:
         run: find app public config tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Unit tests
         run: php tests/unit.php
+      - name: SMTP provider test
+        run: php tests/smtp.php
       - name: MariaDB integration tests
         run: php tests/integration.php
