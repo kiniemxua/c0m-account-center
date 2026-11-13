@@ -11,7 +11,8 @@ function httpCheck(bool $condition, string $message): void
 }
 
 $dbConfigPath = BASE_PATH . '/config/database.php';
-if (is_file($dbConfigPath)) {
+$appConfigPath = BASE_PATH . '/config/app.php';
+if (is_file($dbConfigPath) || is_file($appConfigPath)) {
     throw new RuntimeException('HTTP test refuses to overwrite an existing database config.');
 }
 $dbConfig = [
@@ -27,6 +28,10 @@ if (!is_dir(BASE_PATH . '/config')) {
 $configSource = "<?php\ndeclare(strict_types=1);\nreturn " . var_export($dbConfig, true) . ";\n";
 if (file_put_contents($dbConfigPath, $configSource, LOCK_EX) === false) {
     throw new RuntimeException('Could not create temporary HTTP test configuration.');
+}
+if (file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) === false) {
+    @unlink($dbConfigPath);
+    throw new RuntimeException('Could not create temporary trusted-proxy configuration.');
 }
 
 $pdo = new PDO(
@@ -63,7 +68,7 @@ fclose($pipes[0]);
 try {
     $base = 'http://127.0.0.1:' . $port;
     $request = static function (string $method, string $path, string $body = '', string $cookie = '') use ($base): array {
-        $headers = ["Connection: close"];
+        $headers = ["Connection: close", "X-Forwarded-Proto: https"];
         if ($cookie !== '') {
             $headers[] = 'Cookie: ' . $cookie;
         }
@@ -107,6 +112,7 @@ try {
             $cookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
             httpCheck(stripos($header, 'httponly') !== false, 'Session cookies must be HttpOnly.');
             httpCheck(stripos($header, 'samesite=Lax') !== false, 'Session cookies must use SameSite=Lax.');
+            httpCheck(stripos($header, 'secure') !== false, 'Session cookies must use Secure when HTTPS is asserted by the configured test proxy.');
         }
     }
     httpCheck($cookie !== '', 'The login response must issue a session cookie.');
@@ -175,5 +181,6 @@ try {
     }
     proc_close($process);
     @unlink($dbConfigPath);
+    @unlink($appConfigPath);
     $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
 }
