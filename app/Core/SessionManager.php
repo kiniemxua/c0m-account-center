@@ -1,14 +1,13 @@
 <?php
 declare(strict_types=1);
 
-namespace App\\Core;
+namespace App\Core;
 
 use PDO;
 use Throwable;
 
 final class SessionManager
 {
-    private const IDLE_TIMEOUT = 1800;
     private const ABSOLUTE_TIMEOUT = 43200;
 
     public static function start(): void
@@ -41,7 +40,7 @@ final class SessionManager
         self::revokeCurrent($pdo);
         session_regenerate_id(true);
 
-        $now = new \\DateTimeImmutable('now');
+        $now = new \DateTimeImmutable('now');
         $stmt = $pdo->prepare(
             'INSERT INTO sessions (id, user_id, ip_address, user_agent, last_activity, expires_at)
              VALUES (:id, :user_id, :ip, :agent, :last_activity, :expires_at)'
