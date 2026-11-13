@@ -23,7 +23,7 @@ final class SessionManager
         session_set_cookie_params([
             'lifetime' => 0,
             'path' => '/',
-            'secure' => self::isHttps(),
+            'secure' => self::requestIsSecure(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -32,6 +32,50 @@ final class SessionManager
         if (!empty($_SESSION['user_id'])) {
             self::validateCurrent();
         }
+    }
+
+    /**
+     * Only trust X-Forwarded-Proto when REMOTE_ADDR is explicitly configured
+     * as a trusted proxy. Client-supplied forwarding headers are ignored.
+     */
+    public static function requestIsSecure(): bool
+    {
+        $https = strtolower((string)($_SERVER['HTTPS'] ?? ''));
+        if ($https !== '' && $https !== 'off' && $https !== '0') {
+            return true;
+        }
+
+        $remote = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        $forwardedProto = strtolower(trim((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')));
+        if ($remote === false || $forwardedProto !== 'https') {
+            return false;
+        }
+
+        $configPath = BASE_PATH . '/config/app.php';
+        if (!is_file($configPath)) {
+            return false;
+        }
+
+        try {
+            $config = require $configPath;
+        } catch (Throwable) {
+            return false;
+        }
+        $trusted = is_array($config) ? ($config['trusted_proxies'] ?? []) : [];
+        if (!is_array($trusted)) {
+            return false;
+        }
+
+        $remotePacked = inet_pton($remote);
+        foreach ($trusted as $proxy) {
+            if (!is_string($proxy) || filter_var($proxy, FILTER_VALIDATE_IP) === false) {
+                continue;
+            }
+            if (hash_equals(inet_pton($proxy), $remotePacked)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public static function establish(int $userId): void
@@ -111,10 +155,5 @@ final class SessionManager
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
         }
-    }
-
-    private static function isHttps(): bool
-    {
-        return isset($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off' && $_SERVER['HTTPS'] !== '';
     }
 }
