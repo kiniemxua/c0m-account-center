@@ -67,8 +67,11 @@ fclose($pipes[0]);
 
 try {
     $base = 'http://127.0.0.1:' . $port;
-    $request = static function (string $method, string $path, string $body = '', string $cookie = '') use ($base): array {
-        $headers = ["Connection: close", "X-Forwarded-Proto: https"];
+    $request = static function (string $method, string $path, string $body = '', string $cookie = '', bool $trustedHttps = true) use ($base): array {
+        $headers = ["Connection: close"];
+        if ($trustedHttps) {
+            $headers[] = "X-Forwarded-Proto: https";
+        }
         if ($cookie !== '') {
             $headers[] = 'Cookie: ' . $cookie;
         }
@@ -93,6 +96,9 @@ try {
         }
         return ['status' => $status, 'headers' => $rawHeaders, 'body' => $response === false ? '' : $response];
     };
+
+    $insecureRequest = $request('GET', '/login', '', '', false);
+    httpCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'HTTPS is required'), 'The application must reject HTTP when HTTPS is not proven.');
 
     $deadline = microtime(true) + 8;
     do {
