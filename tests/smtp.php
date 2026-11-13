@@ -15,7 +15,7 @@ spl_autoload_register(static function (string $class): void {
 // SMTP credentials must never be sent over an unencrypted connection.
 $plaintextAuthRejected = false;
 try {
-    $unsafeMailer = new App\Core\\SmtpMailer([
+    $unsafeMailer = new App\Core\SmtpMailer([
         'host' => '127.0.0.1',
         'port' => 1,
         'encryption' => 'none',
@@ -33,7 +33,7 @@ if (!$plaintextAuthRejected) {
 
 $partialCredentialsRejected = false;
 try {
-    $partialMailer = new App\Core\\SmtpMailer([
+    $partialMailer = new App\Core\SmtpMailer([
         'host' => '127.0.0.1',
         'port' => 1,
         'encryption' => 'tls',
