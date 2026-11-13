@@ -11,9 +11,10 @@ Central account and application hub for the c0m.me ecosystem.
 
 ## Current implementation status
 
-The repository contains an early account/authentication foundation:
+The repository contains an account/authentication foundation:
 
-- cPanel installer with atomic config/lock writes and interrupted-install recovery.
+- cPanel installer with atomic config/lock writes, repeatable migrations and recovery after partial schema application.
+- Existing administrator accounts can only be promoted by the installer after password verification.
 - Email/password registration with pending accounts and single-use email verification tokens.
 - Password reset with hashed, expiring, single-use tokens and session revocation.
 - External SMTP provider interface and a development log provider.
@@ -24,14 +25,15 @@ The repository contains an early account/authentication foundation:
 - Transactional admin status/role changes and audit events.
 - Member profile preferences (display name, username, language and timezone).
 - Password change with current-password verification, throttling, session revocation and email notification.
+- HTTPS cookie detection supports direct HTTPS and explicitly configured reverse proxies; forwarded headers from untrusted clients are ignored.
 
-**Not production-ready.** HTTP-level security coverage, installer failure-injection tests, operational migration tracking, independent security review and broader UI localization remain outstanding. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
+**Not production-ready.** The current automated HTTP suite exercises the real PHP router and key access-control/CSRF paths, but does not yet cover every end-to-end account flow. Concurrent last-Super-Admin controller tests, filesystem-permission installer injection, full SMTP TLS/auth failure fixtures, independent security review and broader UI localization remain outstanding. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
 
 ## cPanel installation
 
 1. Upload the repository so app/, config/, database/, storage/ and public/ are siblings.
 2. Point the domain document root to public/; do not expose the repository root.
-3. Enable PHP 8.2+ with pdo_mysql, mbstring and openssl.
+3. Enable PHP 8.2+ with pdo_mysql, mbstring, openssl and fileinfo.
 4. Create a MariaDB/MySQL database and user in cPanel.
 5. Visit /installer/ over HTTPS and create the first administrator.
 6. Keep storage/install.lock, deny public access to /installer/ after setup and make config files read-only.
@@ -40,11 +42,15 @@ See docs/INSTALLATION.md, docs/MAIL.md and docs/SECURITY.md.
 
 ## Tests
 
+Run:
+
 - `php tests/unit.php`
 - `php tests/smtp.php`
-- Set DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD, then run `php tests/integration.php`.
+- `php tests/installer.php` (requires a disposable MariaDB database and DB_* environment variables)
+- `php tests/integration.php` (requires a disposable MariaDB database and DB_* environment variables)
+- `php tests/http.php` (requires the same DB_* environment variables and PHP proc_open)
 
-GitHub Actions is configured to run PHP syntax validation, unit tests, the SMTP protocol fixture and MariaDB integration tests. A configured workflow is not evidence of a passing run; check Actions for the exact commit.
+The GitHub Actions workflow tests PHP 8.2, 8.3 and 8.4 against MariaDB 11.4. It runs repository-wide PHP syntax checks, unit tests, SMTP protocol tests, installer recovery tests, database integration tests and real HTTP router tests. A configured workflow is not evidence of a passing run; check the Actions result for the exact commit.
 
 ## Security status
 
