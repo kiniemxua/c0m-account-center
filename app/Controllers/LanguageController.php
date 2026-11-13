@@ -36,7 +36,18 @@ final class LanguageController
             Localization::persistGuest($locale);
         }
         $return = (string)($_POST['return_to'] ?? '/');
-        if ($return === '' || $return[0] !== '/' || str_starts_with($return, '//') || str_contains($return, "\\") || str_contains($return, "\r") || str_contains($return, "\n")) {
+        $parsed = parse_url($return);
+        $decodedPath = rawurldecode((string)($parsed['path'] ?? ''));
+        if ($return === ''
+            || $return[0] !== '/'
+            || str_starts_with($return, '//')
+            || str_contains($return, "\\")
+            || preg_match('/[\\x00-\\x1F\\x7F]/', $return)
+            || str_starts_with($decodedPath, '//')
+            || str_contains($decodedPath, "\\")
+            || preg_match('/[\\x00-\\x1F\\x7F]/', $decodedPath)
+            || !is_array($parsed)
+            || isset($parsed['scheme'], $parsed['host'], $parsed['user'], $parsed['pass'])) {
             $return = '/';
         }
         header('Location: ' . $return, true, 303);
