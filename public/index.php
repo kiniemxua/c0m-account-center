@@ -7,6 +7,8 @@ require BASE_PATH . '/app/Core/bootstrap.php';
 use App\Core\Router;
 use App\Controllers\HomeController;
 use App\Controllers\AuthController;
+use App\Controllers\SecurityController;
+use App\Controllers\AdminController;
 
 $router = new Router();
 $router->get('/', [HomeController::class, 'index']);
