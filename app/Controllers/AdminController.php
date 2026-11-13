@@ -56,7 +56,7 @@ final class AdminController
             )->fetchAll(PDO::FETCH_COLUMN);
 
             if (!Authorization::hasPermission($actorId, 'users.manage')) {
-                throw new \\RuntimeException('actor_permission_revoked');
+                throw new \RuntimeException('actor_permission_revoked');
             }
             $target = $pdo->prepare('SELECT id, status FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
