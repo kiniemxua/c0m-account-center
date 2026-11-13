@@ -37,11 +37,12 @@
 - SMTP transaction fixture, plaintext-auth rejection and credential-pair validation.
 - Installer HTTP failure on database connection, partial migration failure caused by restricted DB privileges, safe retry, and existing-account password-verification behavior.
 - HTTP router requests for login rendering, security headers, CSRF rejection, unauthenticated admin access denial and unknown routes.
+- Concurrent transaction test that races two Super Admin removals and verifies that one active Super Admin remains.
 - GitHub Actions matrix for PHP 8.2, 8.3 and 8.4 with MariaDB 11.4.
 
 ## Remaining work / not independently audited
 
-- Concurrent HTTP/controller tests proving that simultaneous administrators cannot remove the final active Super Admin; existing controller code uses a shared lock order, but automated race-condition proof is not yet complete.
+- Full HTTP-level concurrent controller requests proving that the browser/session/router layer preserves the same race-condition guarantee; the DB transaction guard itself is exercised by concurrent PHP workers.
 - HTTP-level full registration, email verification, login/logout, password-reset and session-expiration journeys; current HTTP tests are router/security smoke integration, not browser E2E.
 - SMTP fixture coverage for STARTTLS handshake, certificate/hostname mismatch, AUTH rejection, timeout and server-unavailable scenarios. Current fixture validates a local SMTP message transaction without production credentials.
 - Installer failure injection for filesystem write/rename permission failures and recovery after an interrupted config/lock write on real cPanel filesystems.
