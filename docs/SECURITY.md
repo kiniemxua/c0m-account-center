@@ -5,7 +5,7 @@
 - PDO native prepared statements and PHP password_hash()/password_verify().
 - CSRF token generation and constant-time validation on state-changing routes.
 - Session ID regeneration after successful authentication.
-- Strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax cookies.
+- Strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax authenticated cookies; the installer uses SameSite=Strict.
 - The Secure cookie attribute is enabled for direct HTTPS. Behind a reverse proxy, it is enabled only when REMOTE_ADDR matches an explicit IP in config/app.php trusted_proxies and X-Forwarded-Proto is exactly https. Forwarded headers from other clients are ignored.
 - Server-side session records store SHA-256 hashes of PHP session identifiers, not raw session IDs.
 - 30-minute idle timeout, 12-hour absolute expiry, account-status validation and server-side session revocation.
