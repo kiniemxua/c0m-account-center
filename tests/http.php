@@ -14,7 +14,7 @@ $dbConfigPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
 $mailConfigPath = BASE_PATH . '/config/mail.php';
 $mailLogPath = BASE_PATH . '/storage/mail.log';
-if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath)) {
+if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath) || is_file($mailLogPath)) {
     throw new RuntimeException('HTTP test refuses to overwrite an existing database config.');
 }
 $dbConfig = [
