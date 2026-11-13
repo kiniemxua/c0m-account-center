@@ -41,31 +41,64 @@ final class AdminController
             http_response_code(400);
             exit('Invalid user status.');
         }
+
         $pdo = Database::connection();
-        $targetSuperAdmin = Authorization::isSuperAdmin($targetId);
-        if ($targetSuperAdmin && !Authorization::isSuperAdmin($actorId)) {
-            http_response_code(403);
-            exit('Only a super administrator may manage a super administrator.');
-        }
-        if ($targetSuperAdmin && $status !== 'active') {
-            $count = $pdo->query(
-                "SELECT COUNT(*) FROM user_roles ur
+        $pdo->beginTransaction();
+        try {
+            // Lock the active super-admin set first so concurrent status changes
+            // cannot disable the final active super administrator.
+            $activeSuperAdmins = $pdo->query(
+                "SELECT u.id FROM users u
+                 INNER JOIN user_roles ur ON ur.user_id = u.id
                  INNER JOIN roles r ON r.id = ur.role_id
-                 INNER JOIN users u ON u.id = ur.user_id
-                 WHERE r.role_key = 'super_admin' AND u.status = 'active'"
-            )->fetchColumn();
-            if ((int)$count <= 1) {
+                 WHERE r.role_key = 'super_admin' AND u.status = 'active'
+                 ORDER BY u.id FOR UPDATE"
+            )->fetchAll(PDO::FETCH_COLUMN);
+
+            $target = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
+            $target->execute(['id' => $targetId]);
+            if ($target->fetchColumn() === false) {
+                throw new \\RuntimeException('target_not_found');
+            }
+
+            $targetSuperAdmin = Authorization::isSuperAdmin($targetId);
+            if ($targetSuperAdmin && !Authorization::isSuperAdmin($actorId)) {
+                throw new \\RuntimeException('super_admin_forbidden');
+            }
+            if ($targetSuperAdmin && $status !== 'active' && count($activeSuperAdmins) <= 1) {
+                throw new \\RuntimeException('last_super_admin');
+            }
+
+            $stmt = $pdo->prepare('UPDATE users SET status = :status, updated_at = NOW() WHERE id = :id');
+            $stmt->execute(['status' => $status, 'id' => $targetId]);
+            if ($status !== 'active') {
+                $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE user_id = :id AND revoked_at IS NULL')
+                    ->execute(['id' => $targetId]);
+            }
+            Authorization::audit($actorId, 'user.status.changed', 'user', (string)$targetId, ['status' => $status]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            $reason = $e->getMessage();
+            if ($reason === 'target_not_found') {
+                http_response_code(404);
+                exit('User not found.');
+            }
+            if ($reason === 'super_admin_forbidden') {
+                http_response_code(403);
+                exit('Only a super administrator may manage a super administrator.');
+            }
+            if ($reason === 'last_super_admin') {
                 http_response_code(409);
                 exit('The last active super administrator cannot be disabled.');
             }
+            error_log('User status update failed: ' . $e->getMessage());
+            http_response_code(500);
+            exit('User status update failed.');
         }
-        $stmt = $pdo->prepare('UPDATE users SET status = :status, updated_at = NOW() WHERE id = :id');
-        $stmt->execute(['status' => $status, 'id' => $targetId]);
-        Authorization::audit($actorId, 'user.status.changed', 'user', (string)$targetId, ['status' => $status]);
-        if ($targetSuperAdmin && $status !== 'active') {
-            $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE user_id = :id AND revoked_at IS NULL')
-                ->execute(['id' => $targetId]);
-        }
+
         header('Location: /admin/users', true, 303);
     }
 
