@@ -50,5 +50,7 @@ jobs:
         run: php tests/installer.php
       - name: MariaDB integration tests
         run: php tests/integration.php
+      - name: Super Admin concurrency integration test
+        run: php tests/rbac-concurrency.php
       - name: HTTP router integration tests
         run: php tests/http.php
