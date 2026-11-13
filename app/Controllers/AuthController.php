@@ -94,7 +94,7 @@ final class AuthController
             }
             // A duplicate race is deliberately indistinguishable from an existing address.
             if ((string)$e->getCode() !== '23000') {
-                error_log('Registration failed: ' . $e->getMessage());
+                error_log('Registration failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             }
             $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
             require BASE_PATH . '/app/Views/register-result.php';
@@ -109,7 +109,7 @@ final class AuthController
                 "Hello {$display},\n\nVerify your email address using this link:\n{$url}\n\nThis link expires in 24 hours. If you did not request this account, you can ignore this message."
             );
         } catch (Throwable $e) {
-            error_log('Verification email could not be delivered: ' . $e->getMessage());
+            error_log('Verification email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
 
         $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
@@ -169,7 +169,7 @@ final class AuthController
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
-                error_log('Email verification failed: ' . $e->getMessage());
+                error_log('Email verification failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             }
         }
         require BASE_PATH . '/app/Views/verify-result.php';
@@ -198,7 +198,7 @@ final class AuthController
                         "Hello " . ($user['display_name'] ?? '') . ",\n\nVerify your email address:\n{$url}\n\nThis link expires in 24 hours."
                     );
                 } catch (Throwable $e) {
-                    error_log('Verification resend failed: ' . $e->getMessage());
+                    error_log('Verification resend failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 }
             }
         }
@@ -235,7 +235,7 @@ final class AuthController
                         "Hello " . ($user['display_name'] ?? '') . ",\n\nUse this one-time link to reset your password:\n{$url}\n\nThe link expires in one hour. If you did not request this, ignore this message."
                     );
                 } catch (Throwable $e) {
-                    error_log('Password reset email could not be delivered: ' . $e->getMessage());
+                    error_log('Password reset email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 }
             }
         }
@@ -306,7 +306,7 @@ final class AuthController
                 if ($pdo->inTransaction()) {
                     $pdo->rollBack();
                 }
-                error_log('Password reset failed: ' . $e->getMessage());
+                error_log('Password reset failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             }
         }
         if ($reset && $resetUserId !== null && (int)($_SESSION['user_id'] ?? 0) === $resetUserId) {
