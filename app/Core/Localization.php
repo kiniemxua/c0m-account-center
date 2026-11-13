@@ -30,7 +30,9 @@ final class Localization
                 }
             } catch (\Throwable $e) {
                 error_log('Locale preference lookup failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
-                $locale = self::valid($_SESSION['locale'] ?? null) ?? self::valid($_COOKIE['c0m_lang'] ?? null) ?? 'vi';
+                // Do not let a guest preference silently override an account
+                // preference when the account lookup is unavailable.
+                $locale = 'vi';
             }
         } else {
             $locale = self::valid($_SESSION['locale'] ?? null) ?? self::valid($_COOKIE['c0m_lang'] ?? null) ?? 'vi';
