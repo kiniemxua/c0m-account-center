@@ -49,7 +49,7 @@ $insert->execute(['email' => $email, 'hash' => password_hash('Correct-Horse-42!'
 $userId = (int)$pdo->lastInsertId();
 
 try {
-    session_name('c0m_ci_' . bin2hex(random_bytes(3)));
+    session_name('c0m_session');
     session_start();
     $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
     $_SERVER['HTTP_USER_AGENT'] = 'c0m-account-center-ci';
