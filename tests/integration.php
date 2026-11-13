@@ -52,6 +52,24 @@ $insert = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_ver
 $insert->execute(['email' => $email, 'hash' => password_hash('Correct-Horse-42!', PASSWORD_DEFAULT)]);
 $userId = (int)$pdo->lastInsertId();
 
+// RBAC is resolved from database grants, not from frontend visibility.
+$memberRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'");
+$memberRole->execute(['id' => $userId]);
+assertIntegration(!App\Core\Authorization::hasPermission($userId, 'users.manage'), 'Members must not inherit administrative permissions.');
+$pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
+$adminRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'admin'");
+$adminRole->execute(['id' => $userId]);
+assertIntegration(App\Core\Authorization::hasPermission($userId, 'users.manage'), 'Admins must receive their configured user-management permission.');
+assertIntegration(!App\Core\Authorization::hasPermission($userId, 'roles.assign'), 'Admins must not receive super-admin role assignment permission.');
+$pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
+$superRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'");
+$superRole->execute(['id' => $userId]);
+assertIntegration(App\Core\Authorization::isSuperAdmin($userId), 'Super-admin role must be recognized by the authorization service.');
+App\Core\Authorization::audit($userId, 'ci.audit.test', 'user', (string)$userId, ['test' => true]);
+$audit = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :id AND action = 'ci.audit.test'");
+$audit->execute(['id' => $userId]);
+assertIntegration((int)$audit->fetchColumn() === 1, 'Sensitive actions must be auditable.');
+
 try {
     session_name('c0m_session');
     session_start();
