@@ -86,6 +86,14 @@ final class AuthController
             $userId = (int)$pdo->lastInsertId();
             $profile = $pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:user_id)');
             $profile->execute(['user_id' => $userId]);
+            $memberRole = $pdo->prepare(
+                "INSERT INTO user_roles (user_id, role_id)
+                 SELECT :user_id, id FROM roles WHERE role_key = 'member'"
+            );
+            $memberRole->execute(['user_id' => $userId]);
+            if ($memberRole->rowCount() !== 1) {
+                throw new RuntimeException('Default member role is unavailable.');
+            }
             $token = $this->issueToken($pdo, $userId, 'email_verification', 86400);
             $pdo->commit();
         } catch (Throwable $e) {
