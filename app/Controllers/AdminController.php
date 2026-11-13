@@ -58,15 +58,15 @@ final class AdminController
             $target = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
             if ($target->fetchColumn() === false) {
-                throw new \\RuntimeException('target_not_found');
+                throw new \RuntimeException('target_not_found');
             }
 
             $targetSuperAdmin = Authorization::isSuperAdmin($targetId);
             if ($targetSuperAdmin && !Authorization::isSuperAdmin($actorId)) {
-                throw new \\RuntimeException('super_admin_forbidden');
+                throw new \RuntimeException('super_admin_forbidden');
             }
             if ($targetSuperAdmin && $status !== 'active' && count($activeSuperAdmins) <= 1) {
-                throw new \\RuntimeException('last_super_admin');
+                throw new \RuntimeException('last_super_admin');
             }
 
             $stmt = $pdo->prepare('UPDATE users SET status = :status, updated_at = NOW() WHERE id = :id');
