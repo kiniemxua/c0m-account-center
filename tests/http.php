@@ -144,6 +144,18 @@ try {
         'return_to' => '/login',
     ]), $cookie);
     httpCheck($guestLanguage['status'] === 303, 'Guest language switching must redirect safely.');
+    $invalidLanguage = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf, 'language' => '../en.php', 'return_to' => '/login',
+    ]), $cookie);
+    httpCheck($invalidLanguage['status'] === 422, 'Unsupported locale values must be rejected.');
+    $unsafeRedirect = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf, 'language' => 'en', 'return_to' => '//evil.example/path',
+    ]), $cookie);
+    httpCheck($unsafeRedirect['status'] === 303 && in_array('Location: /', $unsafeRedirect['headers'], true), 'Protocol-relative return targets must fall back to the local home page.');
+    $encodedUnsafeRedirect = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf, 'language' => 'en', 'return_to' => '/%2f%2fevil.example/path',
+    ]), $cookie);
+    httpCheck($encodedUnsafeRedirect['status'] === 303 && in_array('Location: /', $encodedUnsafeRedirect['headers'], true), 'Encoded protocol-relative return targets must not be used.');
     $localeCookie = '';
     foreach ($guestLanguage['headers'] as $header) {
         if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
