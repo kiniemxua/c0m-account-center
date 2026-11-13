@@ -6,7 +6,7 @@
 - CSRF token generation and constant-time validation on state-changing routes.
 - Session ID regeneration after successful authentication.
 - Strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax authenticated cookies; the installer uses SameSite=Strict.
-- The Secure cookie attribute is enabled for direct HTTPS. Behind a reverse proxy, it is enabled only when REMOTE_ADDR matches an explicit IP in config/app.php trusted_proxies and X-Forwarded-Proto is exactly https. Forwarded headers from other clients are ignored.
+- The application and installer reject requests unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS. Secure cookies are enabled only when REMOTE_ADDR matches an explicit IP in config/app.php trusted_proxies and X-Forwarded-Proto is exactly https. Forwarded headers from other clients are ignored.
 - Server-side session records store SHA-256 hashes of PHP session identifiers, not raw session IDs.
 - 30-minute idle timeout, 12-hour absolute expiry, account-status validation and server-side session revocation.
 - Session/device inventory, individual session revocation and sign-out-other-devices. Suspended accounts and idle/absolute expiry invalidate the server-side session.
