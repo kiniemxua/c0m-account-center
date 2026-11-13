@@ -266,6 +266,7 @@ final class AuthController
         $token = trim((string)($_POST['token'] ?? ''));
         $password = (string)($_POST['password'] ?? '');
         $reset = false;
+        $resetUserId = null;
         if ($this->strongPassword($password) && preg_match('/^[a-f0-9]{64}$/', $token)) {
             $pdo = Database::connection();
             $pdo->beginTransaction();
@@ -293,6 +294,7 @@ final class AuthController
                         $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE user_id = :user_id AND revoked_at IS NULL')
                             ->execute(['user_id' => (int)$row['user_id']]);
                         $reset = true;
+                        $resetUserId = (int)$row['user_id'];
                     }
                 }
                 $pdo->commit();
@@ -303,7 +305,7 @@ final class AuthController
                 error_log('Password reset failed: ' . $e->getMessage());
             }
         }
-        if ($reset && !empty($_SESSION['user_id'])) {
+        if ($reset && $resetUserId !== null && (int)($_SESSION['user_id'] ?? 0) === $resetUserId) {
             SessionManager::invalidate();
         }
         require BASE_PATH . '/app/Views/password-reset-result.php';
