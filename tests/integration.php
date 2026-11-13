@@ -72,11 +72,11 @@ $userId = (int)$pdo->lastInsertId();
 // Authenticated accounts with no profile row must not inherit a stale guest locale.
 $_SESSION = ['user_id' => $userId, 'locale' => 'en'];
 $_COOKIE = ['c0m_lang' => 'en'];
-App\\Core\\Localization::initialize();
-assertIntegration(App\\Core\\Localization::current() === 'vi', 'A signed-in account with no saved language preference must use Vietnamese, not the guest cookie.');
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'vi', 'A signed-in account with no saved language preference must use Vietnamese, not the guest cookie.');
 $_SESSION = [];
 $_COOKIE = [];
-App\\Core\\Localization::set('vi');
+App\Core\Localization::set('vi');
 
 // RBAC is resolved from database grants, not from frontend visibility.
 $memberRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'");
