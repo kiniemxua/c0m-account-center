@@ -144,7 +144,7 @@ try {
         'password' => $limitedPassword, 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
     ], $cookie);
-    installerCheck($partial['status'] === 200 && str_contains($partial['body'], 'Installation failed.'), 'A migration permission failure must be reported as recoverable.');
+    installerCheck($partial['status'] === 200 && str_contains($partial['body'], 'Cài đặt thất bại.'), 'A migration permission failure must be reported as recoverable.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'A partial migration must not mark the application installed.');
 
     $tables = $root->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = " . $root->quote($dbName))->fetchAll(PDO::FETCH_COLUMN);
@@ -164,7 +164,7 @@ try {
     $recoveredCookie = $cookieFrom($recovered) ?: $cookie;
     @unlink($lockPath);
     $lockRecovery = $request('GET', '', $recoveredCookie);
-    installerCheck($lockRecovery['status'] === 200 && str_contains($lockRecovery['body'], 'Installation locked'), 'A saved database config without its lock must recover safely.');
+    installerCheck($lockRecovery['status'] === 200 && str_contains($lockRecovery['body'], 'Đã khóa cài đặt'), 'A saved database config without its lock must recover safely.');
     installerCheck(is_file($lockPath), 'Installer must recreate the missing install lock from the saved DB config.');
 
     $adminId = $root->query("SELECT id FROM users WHERE email = 'installer-ci@example.test'")->fetchColumn();
@@ -192,7 +192,7 @@ try {
         'password' => $dbPassword, 'admin_name' => 'Existing member',
         'admin_email' => 'existing-member@example.test', 'admin_password' => 'WrongExistingPassword-999',
     ], $cookie);
-    installerCheck(str_contains($wrongExistingPassword['body'], 'Installation failed.'), 'Installer must reject an existing account when its password is wrong.');
+    installerCheck(str_contains($wrongExistingPassword['body'], 'Cài đặt thất bại.'), 'Installer must reject an existing account when its password is wrong.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'Failed existing-account verification must not complete installation.');
     $memberRole = $root->prepare("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id AND r.role_key = 'super_admin'");
     $memberRole->execute(['id' => $memberId]);
@@ -203,7 +203,7 @@ try {
         'password' => $dbPassword, 'admin_name' => 'Existing member',
         'admin_email' => 'existing-member@example.test', 'admin_password' => $memberPassword,
     ], $cookie);
-    installerCheck(str_contains($rightExistingPassword['body'], 'Installation locked'), 'A verified existing account may complete installer recovery.');
+    installerCheck(str_contains($rightExistingPassword['body'], 'Đã khóa cài đặt'), 'A verified existing account may complete installer recovery.');
     $memberRole->execute(['id' => $memberId]);
     installerCheck((int)$memberRole->fetchColumn() === 1, 'Only a password-verified existing account may be promoted by the installer.');
 
