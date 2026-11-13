@@ -12,6 +12,7 @@ use App\Core\Localization;
 use App\Core\SessionManager;
 use PDO;
 use Throwable;
+use RuntimeException;
 
 final class AuthController
 {
