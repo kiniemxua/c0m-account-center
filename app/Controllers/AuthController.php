@@ -37,7 +37,7 @@ final class AuthController
              AND (:ip1 IS NULL OR ip_address = :ip2)'
         );
         $limit->bindValue(':email', $email);
-        $limit->bindValue(':ip', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
+        $limit->bindValue(':ip1', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
         $limit->bindValue(':ip2', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
         $limit->execute();
         if ((int)$limit->fetchColumn() >= 10) {
