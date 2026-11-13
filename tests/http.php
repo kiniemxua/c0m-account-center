@@ -325,7 +325,29 @@ try {
         $dashboardCsrf = $match[1];
     }
     httpCheck($dashboardCsrf !== '', 'The authenticated dashboard must issue a logout CSRF token.');
-    $logout = $request('POST', '/logout', http_build_query(['_csrf' => $dashboardCsrf]), $authCookie);
+    $memberLanguage = $request('POST', '/language', http_build_query([
+        '_csrf' => $dashboardCsrf, 'language' => 'en', 'return_to' => '/dashboard',
+    ]), $authCookie);
+    httpCheck($memberLanguage['status'] === 303 && in_array('Location: /dashboard', $memberLanguage['headers'], true), 'Authenticated language switching must redirect to the local dashboard.');
+    $memberPreference = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+    $memberPreference->execute(['id' => $testUserId]);
+    httpCheck($memberPreference->fetchColumn() === 'en', 'Authenticated language switching must persist the member profile preference.');
+    $memberLocaleCookie = '';
+    foreach ($memberLanguage['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
+            $memberLocaleCookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    httpCheck($memberLocaleCookie === 'c0m_lang=en', 'Authenticated language changes must update the guest fallback cookie.');
+    $authCookie .= '; ' . $memberLocaleCookie;
+    $englishDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck($englishDashboard['status'] === 200 && str_contains($englishDashboard['body'], '<html lang="en">'), 'The saved member language must override prior session and cookie state.');
+    $logoutCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $englishDashboard['body'], $match)) {
+        $logoutCsrf = $match[1];
+    }
+    httpCheck($logoutCsrf !== '', 'The localized dashboard must retain its CSRF token.');
+    $logout = $request('POST', '/logout', http_build_query(['_csrf' => $logoutCsrf]), $authCookie);
     httpCheck($logout['status'] === 303, 'Logout must complete through the HTTP router.');
     $session = $pdo->prepare('SELECT revoked_at FROM sessions WHERE user_id = :id ORDER BY last_activity DESC LIMIT 1');
     $session->execute(['id' => $testUserId]);
