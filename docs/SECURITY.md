@@ -9,8 +9,9 @@
 - The Secure cookie attribute is enabled for direct HTTPS. Behind a reverse proxy, it is enabled only when REMOTE_ADDR matches an explicit IP in config/app.php trusted_proxies and X-Forwarded-Proto is exactly https. Forwarded headers from other clients are ignored.
 - Server-side session records store SHA-256 hashes of PHP session identifiers, not raw session IDs.
 - 30-minute idle timeout, 12-hour absolute expiry, account-status validation and server-side session revocation.
-- Session/device inventory, individual session revocation and sign-out-other-devices.
+- Session/device inventory, individual session revocation and sign-out-other-devices. Suspended accounts and idle/absolute expiry invalidate the server-side session.
 - Independent failed-login throttles by account identifier and source IP. Only REMOTE_ADDR is used for client IP; forwarded client-IP headers are ignored.
+- Registration enable/disable is enforced server-side from the administrator setting.
 - Registration, pending-account email verification, hashed one-time verification tokens and generic duplicate-registration responses.
 - Password recovery with hashed, expiring, single-use reset tokens and revocation of all account sessions.
 - Member password change with current-password verification under a row lock, independent attempt throttling, session/token revocation and post-change email notification.
@@ -31,7 +32,7 @@
 - Registration, duplicate-address response, verification-token hashing, activation and replay rejection.
 - Expired verification and password-reset token rejection.
 - Password reset hash update and existing-session revocation.
-- Login session-ID rotation, server-side session creation, failed-login history and account-identifier throttling.
+- Login session-ID rotation, server-side session creation, failed-login history, account-identifier/IP throttling, idle expiry and suspended-account invalidation.
 - Profile preference persistence and password-change notification dispatch.
 - RBAC permission grants/denials and audit insertion.
 - SMTP transaction fixture, plaintext-auth rejection and credential-pair validation.
