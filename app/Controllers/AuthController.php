@@ -42,17 +42,17 @@ final class AuthController
 
         if (!$registrationEnabled) {
             http_response_code(403);
-            $error = 'Registration is currently closed.';
+            $error = Localization::translate("Registration is currently closed.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190 || !$this->strongPassword($password)) {
-            $error = 'Use a valid email address and a password of at least 12 characters containing upper and lower case letters and a number.';
+            $error = Localization::translate("Use a valid email address and a password of at least 12 characters containing upper and lower case letters and a number.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
         if ($display === '' || mb_strlen($display) > 100) {
-            $error = 'Enter a display name of up to 100 characters.';
+            $error = Localization::translate("Enter a display name of up to 100 characters.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
@@ -61,7 +61,7 @@ final class AuthController
         if ($this->recordAuthAttempt($pdo, 'register', $email)) {
             http_response_code(429);
             header('Retry-After: 900');
-            $error = 'Too many requests. Please wait before trying again.';
+            $error = Localization::translate("Too many requests. Please wait before trying again.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
@@ -69,7 +69,7 @@ final class AuthController
         $stmt = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
         $stmt->execute(['email' => $email]);
         if ($stmt->fetchColumn() !== false) {
-            $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+            $message = Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
             require BASE_PATH . '/app/Views/register-result.php';
             return;
         }
@@ -106,7 +106,7 @@ final class AuthController
             if ((string)$e->getCode() !== '23000') {
                 error_log('Registration failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             }
-            $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+            $message = Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
             require BASE_PATH . '/app/Views/register-result.php';
             return;
         }
@@ -119,7 +119,7 @@ final class AuthController
             error_log('Verification email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
 
-        $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+        $message = Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
         require BASE_PATH . '/app/Views/register-result.php';
     }
 
@@ -206,7 +206,7 @@ final class AuthController
                 }
             }
         }
-        $message = 'If this address has a pending account, a new verification email will be sent shortly.';
+        $message = Localization::translate("If this address has a pending account, a new verification email will be sent shortly.");
         require BASE_PATH . '/app/Views/register-result.php';
     }
 
@@ -240,7 +240,7 @@ final class AuthController
                 }
             }
         }
-        $message = 'If an active account matches that address, password reset instructions will be sent shortly.';
+        $message = Localization::translate("If an active account matches that address, password reset instructions will be sent shortly.");
         require BASE_PATH . '/app/Views/password-reset-result.php';
     }
 
@@ -326,7 +326,7 @@ final class AuthController
         $validEmail = filter_var($email, FILTER_VALIDATE_EMAIL);
         $password = (string)($_POST['password'] ?? '');
         if (!$validEmail || $password === '') {
-            $error = 'The email or password is incorrect.';
+            $error = Localization::translate("The email or password is incorrect.");
             require BASE_PATH . '/app/Views/login.php';
             return;
         }
@@ -355,7 +355,7 @@ final class AuthController
         if ((int)$identityLimit->fetchColumn() >= 10 || $ipBlocked) {
             http_response_code(429);
             header('Retry-After: 900');
-            $error = 'Too many sign-in attempts. Please wait and try again.';
+            $error = Localization::translate("Too many sign-in attempts. Please wait and try again.");
             require BASE_PATH . '/app/Views/login.php';
             return;
         }
@@ -379,7 +379,7 @@ final class AuthController
 
         if (!$success) {
             usleep(250000);
-            $error = 'The email or password is incorrect.';
+            $error = Localization::translate("The email or password is incorrect.");
             require BASE_PATH . '/app/Views/login.php';
             return;
         }

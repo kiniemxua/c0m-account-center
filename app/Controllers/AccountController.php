@@ -59,7 +59,7 @@ final class AccountController
             || !in_array($language, ['vi', 'en'], true)
             || !in_array($timezone, \DateTimeZone::listIdentifiers(), true)) {
             http_response_code(422);
-            $error = 'Please check your display name, username, language and timezone.';
+            $error = Localization::translate("Please check your display name, username, language and timezone.");
             $this->renderWithInput($userId, $error);
             return;
         }
@@ -89,7 +89,7 @@ final class AccountController
             }
             if ((string)$e->getCode() === '23000') {
                 http_response_code(422);
-                $error = 'That username is already in use.';
+                $error = Localization::translate("That username is already in use.");
                 $this->renderWithInput($userId, $error);
                 return;
             }
@@ -117,7 +117,7 @@ final class AccountController
 
         if (!$this->strongPassword($new) || !hash_equals($new, $confirm)) {
             http_response_code(422);
-            $error = 'The new password must be at least 12 characters with upper/lowercase letters and a number, and both entries must match.';
+            $error = Localization::translate("The new password must be at least 12 characters with upper/lowercase letters and a number, and both entries must match.");
             $this->renderWithInput($userId, $error);
             return;
         }
@@ -126,7 +126,7 @@ final class AccountController
         if ($this->passwordChangeRateLimited($pdo, $userId)) {
             http_response_code(429);
             header('Retry-After: 900');
-            $error = 'Too many password-change attempts. Please wait and try again.';
+            $error = Localization::translate("Too many password-change attempts. Please wait and try again.");
             $this->renderWithInput($userId, $error);
             return;
         }
@@ -139,14 +139,14 @@ final class AccountController
             if (!$user || !password_verify($current, $user['password_hash'])) {
                 $pdo->rollBack();
                 http_response_code(422);
-                $error = 'The current password is incorrect.';
+                $error = Localization::translate("The current password is incorrect.");
                 $this->renderWithInput($userId, $error);
                 return;
             }
             if (password_verify($new, $user['password_hash'])) {
                 $pdo->rollBack();
                 http_response_code(422);
-                $error = 'Choose a password different from your current password.';
+                $error = Localization::translate("Choose a password different from your current password.");
                 $this->renderWithInput($userId, $error);
                 return;
             }

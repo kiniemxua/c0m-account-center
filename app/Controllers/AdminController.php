@@ -202,6 +202,23 @@ final class AdminController
         header('Location: /admin/users', true, 303);
     }
 
+    public function audit(): void
+    {
+        Authorization::requirePermission('audit.view');
+        $stmt = Database::connection()->query(
+            'SELECT a.id, a.action, a.subject_type, a.subject_id, a.metadata, a.ip_address, a.created_at,
+                    u.display_name, u.email
+             FROM audit_logs a LEFT JOIN users u ON u.id = a.actor_user_id
+             ORDER BY a.created_at DESC LIMIT 100'
+        );
+        $events = $stmt->fetchAll();
+        foreach ($events as &$event) {
+            $event['ip_display'] = $event['ip_address'] !== null ? (inet_ntop($event['ip_address']) ?: 'Unknown') : 'Unknown';
+        }
+        unset($event);
+        require BASE_PATH . '/app/Views/admin-audit.php';
+    }
+
     public function settings(): void
     {
         $actorId = Authorization::requirePermission('settings.manage');
@@ -222,6 +239,7 @@ final class AdminController
             header('Location: /admin/settings', true, 303);
             return;
         }
+        $canViewAudit = Authorization::hasPermission($actorId, 'audit.view');
         $enabled = $pdo->query(
             "SELECT setting_value FROM app_settings WHERE setting_key = 'registration_enabled'"
         )->fetchColumn() === '1';

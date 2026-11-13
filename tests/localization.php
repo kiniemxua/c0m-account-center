@@ -22,6 +22,12 @@ localeCheck($bootstrapSource !== false && str_contains($bootstrapSource, "'/lang
 $installerSource = file_get_contents(BASE_PATH . '/public/installer/index.php');
 localeCheck($installerSource !== false && str_contains($installerSource, '$installerLocale') && str_contains($installerSource, '$installerT'), 'Installer must use the language catalog and locale switcher.');
 
+$controllerFiles = glob(BASE_PATH . '/app/Controllers/*.php') ?: [];
+foreach ($controllerFiles as $controllerFile) {
+    $controllerSource = file_get_contents($controllerFile);
+    localeCheck($controllerSource !== false, 'Controller source must be readable.');
+    localeCheck(!preg_match('~\\$(?:error|message)\\s*=\\s*["\\x27]~', $controllerSource), 'Controllers must assign translated messages, not hardcoded interface copy: ' . basename($controllerFile));
+}
 $sourceFiles = array_merge(
     glob(BASE_PATH . '/app/Views/*.php') ?: [],
     glob(BASE_PATH . '/app/Views/partials/*.php') ?: [],
@@ -56,6 +62,7 @@ foreach ($viewFiles as $viewFile) {
     localeCheck($viewSource !== false && str_contains($viewSource, 'Localization::current()'), 'Every application page must declare the active locale: ' . basename($viewFile));
     $plainHtml = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $viewSource) ?? $viewSource;
     foreach (['New here?', 'Create account</button>', 'User administration — c0m.me', 'Forgot password — c0m.me', 'Reset password — c0m.me', 'Verify email — c0m.me', 'Your digital home</title>', 'App Hub</h2>', 'Last activity:', 'Expires:', 'placeholder="optional"', 'Center</footer>'] as $rawCopy) { localeCheck(!str_contains($plainHtml, $rawCopy), 'Hardcoded interface copy remains in ' . basename($viewFile) . ': ' . $rawCopy); }
+    localeCheck(!str_contains($viewSource, 'Localization::translate($error)') && !str_contains($viewSource, 't($error)'), 'Views must not translate already-localized controller messages twice: ' . basename($viewFile));
     localeCheck(str_contains($viewSource, "partials/language-switcher.php"), 'Every application page must expose the language switcher: ' . basename($viewFile));
 }
 localeCheck(str_contains($vi['Welcome back'] ?? '', 'Chào mừng'), 'Vietnamese UTF-8 text must be preserved.');

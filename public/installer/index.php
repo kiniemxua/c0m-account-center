@@ -5,8 +5,8 @@ $root = dirname(__DIR__, 2);
 $installerLocale = (string)($_GET['lang'] ?? $_COOKIE['c0m_lang'] ?? 'vi');
 if (!in_array($installerLocale, ['vi', 'en'], true)) $installerLocale = 'vi';
 require_once $root . '/app/Core/RequestSecurity.php';
-if (isset($_GET['lang']) && in_array($_GET['lang'], ['vi', 'en'], true)) {
-    setcookie('c0m_lang', $installerLocale, ['expires' => time() + 31536000, 'path' => '/', 'secure' => \App\\Core\\RequestSecurity::isHttps($root), 'httponly' => true, 'samesite' => 'Lax']);
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['vi', 'en'], true) && \App\Core\RequestSecurity::isHttps($root)) {
+    setcookie('c0m_lang', $installerLocale, ['expires' => time() + 31536000, 'path' => '/', 'secure' => true, 'httponly' => true, 'samesite' => 'Lax']);
 }
 $installerCatalog = require $root . '/lang/' . $installerLocale . '.php';
 $installerFallback = require $root . '/lang/vi.php';

@@ -12,7 +12,7 @@ $returnTo = (string)($_SERVER['REQUEST_URI'] ?? '/');
 <option value="vi" <?= $currentLocale === 'vi' ? 'selected' : '' ?>><?= htmlspecialchars(\App\Core\t('Vietnamese'), ENT_QUOTES, 'UTF-8') ?></option>
 <option value="en" <?= $currentLocale === 'en' ? 'selected' : '' ?>><?= htmlspecialchars(\App\Core\t('English'), ENT_QUOTES, 'UTF-8') ?></option>
 </select>
-<button type="submit" class="language-apply"><?= htmlspecialchars(\App\\Core\\t('Apply'), ENT_QUOTES, 'UTF-8') ?></button>
+<button type="submit" class="language-apply"><?= htmlspecialchars(\App\Core\t('Apply'), ENT_QUOTES, 'UTF-8') ?></button>
 </form>
 <script>window.C0M_I18N = <?= json_encode(Localization::javascriptMessages(['Confirm','Cancel','Saved','An error occurred.','Please try again.']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script>
