@@ -11,20 +11,21 @@ Central account and application hub for the c0m.me ecosystem.
 
 ## Current implementation status
 
-The repository contains an early authentication foundation:
+The repository contains an early account/authentication foundation:
 
 - cPanel installer with atomic config/lock writes and interrupted-install recovery.
 - Email/password registration with pending accounts and single-use email verification tokens.
 - Password reset with hashed, expiring, single-use tokens and session revocation.
-- SMTP provider interface with external SMTP delivery and a development log provider.
+- External SMTP provider interface and a development log provider.
 - Login throttling by account identifier and source IP.
-- Hardened PHP sessions with server-side records, idle/absolute expiry and session revocation.
+- Hardened PHP sessions with server-side records, idle/absolute expiry and revocation.
 - Session/device listing, individual revocation and sign-out-other-devices.
-- Database-backed roles and permissions (Super Admin, Admin, Member) and protected admin routes.
-- Admin controls for registration settings, member status and role assignment.
-- Unit and MariaDB integration test scripts.
+- Database-backed Super Admin, Admin and Member roles with protected admin routes.
+- Transactional admin status/role changes and audit events.
+- Member profile preferences (display name, username, language and timezone).
+- Password change with current-password verification, throttling, session revocation and email notification.
 
-**Not production-ready.** Tests and security review are still in progress. Profile editing, password change, login/security notification emails, expanded account-security workflows and broader HTTP-level abuse tests remain outstanding. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
+**Not production-ready.** HTTP-level security coverage, installer failure-injection tests, operational migration tracking, independent security review and broader UI localization remain outstanding. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
 
 ## cPanel installation
 
@@ -43,8 +44,8 @@ See docs/INSTALLATION.md, docs/MAIL.md and docs/SECURITY.md.
 - `php tests/smtp.php`
 - Set DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD, then run `php tests/integration.php`.
 
-GitHub Actions is configured to run PHP syntax validation, unit tests, the SMTP protocol fixture and MariaDB integration tests. A configured workflow is not evidence of a passing run; check the Actions result for the exact commit.
+GitHub Actions is configured to run PHP syntax validation, unit tests, the SMTP protocol fixture and MariaDB integration tests. A configured workflow is not evidence of a passing run; check Actions for the exact commit.
 
 ## Security status
 
-See [docs/SECURITY.md](docs/SECURITY.md). Do not accept real member accounts or financial activity until the outstanding security work and deployment review are complete.
+See [docs/SECURITY.md](docs/SECURITY.md). Do not accept real member accounts or financial activity until outstanding security work and deployment review are complete.
