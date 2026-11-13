@@ -12,6 +12,10 @@
 - Add account profile preferences for display name, username, language and timezone.
 - Add password change with current-password verification, independent throttling, session/token revocation and security email.
 - Add migration 003 for Vietnamese as the default language of newly created profiles.
+- Add Vietnamese-first and English UI localization for public, account, security, admin, audit and installer screens.
+- Persist guest language choices in an HttpOnly cookie/session and authenticated choices in account profile preferences; keep account preference authoritative.
+- Localize validation/system errors and verification, reset and password-change security emails.
+- Add catalog parity, view-key coverage, locale fallback, JavaScript message and email-template checks.
 - Expand MariaDB integration tests for token expiry/replay, login session fixation, identifier throttling, profile preferences and password change.
 - Add SMTP protocol tests and update cPanel/mail/security documentation.
 
