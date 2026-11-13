@@ -21,7 +21,7 @@
 - External SMTP provider and development-log provider. SMTP AUTH is rejected unless TLS or implicit SSL is configured; TLS peer and hostname verification are enabled by the stream context.
 - Installer writes config and install lock atomically, refuses to overwrite existing configuration, can recover when config was written but the lock was not, and permits retries after partial repeatable migrations.
 - Installer requires password verification before promoting an already-existing account to Super Admin.
-- Generic installer failure responses; raw DB credentials and exception messages are not included in installer logs.
+- Generic installer failure responses; application and installer logs record only exception class/code, not raw DB/SMTP credentials, server responses or exception messages.
 - Generic login/reset responses, output escaping in current views and baseline security response headers.
 
 ## Automated test coverage
