@@ -173,17 +173,7 @@ final class AdminController
                 in_array('super_admin', $roleKeys, true)
             );
 
-            $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $targetId]);
-            $assign = $pdo->prepare(
-                'INSERT INTO user_roles (user_id, role_id)
-                 SELECT :user_id, id FROM roles WHERE role_key = :role_key'
-            );
-            foreach ($roleKeys as $roleKey) {
-                $assign->execute(['user_id' => $targetId, 'role_key' => $roleKey]);
-                if ($assign->rowCount() !== 1) {
-                    throw new \RuntimeException('Role does not exist.');
-                }
-            }
+            $roleKeys = \App\Core\UserRoleManager::replace($pdo, $targetId, $roleKeys);
             Authorization::audit($actorId, 'user.roles.changed', 'user', (string)$targetId, ['roles' => $roleKeys]);
             $pdo->commit();
         } catch (Throwable $e) {
