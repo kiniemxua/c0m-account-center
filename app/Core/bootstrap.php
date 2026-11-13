@@ -18,7 +18,7 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
-if (!App\\Core\\RequestSecurity::isHttps(BASE_PATH)) {
+if (!App\Core\RequestSecurity::isHttps(BASE_PATH)) {
     http_response_code(400);
     header('Cache-Control: no-store');
     exit('HTTPS is required. Configure direct HTTPS or trusted proxy addresses.');
