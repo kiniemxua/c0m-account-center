@@ -58,6 +58,6 @@ Authentication sessions use strict PHP session mode, cookie-only sessions, HttpO
 
 ## Tests
 
-Run `php tests/unit.php`, `php tests/smtp.php`, `php tests/installer.php`, `php tests/integration.php` and `php tests/http.php`. Database-backed tests require a disposable MariaDB/MySQL database and DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD. HTTP and installer tests require PHP proc_open and bind only to localhost. The installer test creates a temporary restricted DB user and removes it after execution.
+Run `php tests/unit.php`, `php tests/smtp.php`, `php tests/installer.php`, `php tests/integration.php`, `php tests/rbac-concurrency.php` and `php tests/http.php`. Database-backed tests require a disposable MariaDB/MySQL database and DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD. HTTP and installer tests require PHP proc_open and bind only to localhost. The installer test creates a temporary restricted DB user and removes it after execution.
 
 This project remains under development and is not production-ready. App Registry, OAuth 2.0/OIDC SSO, PKCE, passkeys and QR login are not implemented.
