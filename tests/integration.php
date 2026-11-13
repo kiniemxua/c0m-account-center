@@ -48,7 +48,18 @@ $pdo->exec($authMigration);
 $pdo->exec($authMigration); // RBAC and auth token migration must also be repeatable.
 $preferencesMigration = file_get_contents(BASE_PATH . '/database/migrations/003_account_preferences.sql');
 assertIntegration($preferencesMigration !== false, 'Account preferences migration must exist.');
+// Existing account choices must survive the first application of migration 003.
+$legacyEmail = 'locale-preserve-' . bin2hex(random_bytes(6)) . '@example.test';
+$legacyUser = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
+$legacyUser->execute(['email' => $legacyEmail, 'hash' => password_hash('Legacy-Locale-42!', PASSWORD_DEFAULT)]);
+$legacyUserId = (int)$pdo->lastInsertId();
+$pdo->prepare("INSERT INTO user_profiles (user_id, language) VALUES (:id, 'en')")->execute(['id' => $legacyUserId]);
 $pdo->exec($preferencesMigration);
+$legacyPreference = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$legacyPreference->execute(['id' => $legacyUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'en', 'The first language migration must preserve an existing English preference.');
+$pdo->prepare('DELETE FROM user_profiles WHERE user_id = :id')->execute(['id' => $legacyUserId]);
+$pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $legacyUserId]);
 $pdo->exec($preferencesMigration); // Preference defaults must be safe to reapply.
 $languageColumn = $pdo->query("SHOW COLUMNS FROM user_profiles LIKE 'language'")->fetch();
 assertIntegration($languageColumn && $languageColumn['Default'] === 'vi', 'New account profiles must default to Vietnamese.');
