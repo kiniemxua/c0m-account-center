@@ -21,7 +21,7 @@ The repository contains an account/authentication foundation:
 - Login throttling by account identifier and source IP.
 - Hardened PHP sessions with server-side records, idle/absolute expiry and revocation.
 - Session/device listing, individual revocation and sign-out-other-devices.
-- Database-backed Super Admin, Admin and Member roles with protected admin routes.
+- Database-backed Super Admin, Admin and Member roles with protected admin routes and multi-role member assignments.
 - Transactional admin status/role changes and audit events.
 - Member profile preferences (display name, username, language and timezone).
 - Password change with current-password verification, throttling, session revocation and email notification.
