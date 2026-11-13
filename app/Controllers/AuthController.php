@@ -34,7 +34,7 @@ final class AuthController
         $limit = $pdo->prepare(
             'SELECT COUNT(*) FROM login_history
              WHERE email_attempted = :email AND created_at >= (NOW() - INTERVAL 15 MINUTE)
-             AND (:ip IS NULL OR ip_address = :ip2)'
+             AND (:ip1 IS NULL OR ip_address = :ip2)'
         );
         $limit->bindValue(':email', $email);
         $limit->bindValue(':ip', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
