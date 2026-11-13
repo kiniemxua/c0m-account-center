@@ -21,6 +21,16 @@ foreach ($emails as $email) {
     $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'")
         ->execute(['id' => $ids[array_key_last($ids)]]);
 }
+$roleCount = $pdo->prepare(
+    "SELECT COUNT(*) FROM users u
+     INNER JOIN user_roles ur ON ur.user_id = u.id
+     INNER JOIN roles r ON r.id = ur.role_id
+     WHERE u.id IN (?, ?) AND u.status = 'active' AND r.role_key = 'super_admin'"
+);
+$roleCount->execute($ids);
+if ((int)$roleCount->fetchColumn() !== 2) {
+    throw new RuntimeException('Concurrency fixture must contain two active Super Admin accounts.');
+}
 $marker = sys_get_temp_dir() . '/c0m-rbac-' . bin2hex(random_bytes(6));
 $process1 = null;
 $process2 = null;
