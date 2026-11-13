@@ -69,6 +69,15 @@ $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $u
 $superRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'");
 $superRole->execute(['id' => $userId]);
 assertIntegration(App\Core\Authorization::isSuperAdmin($userId), 'Super-admin role must be recognized by the authorization service.');
+
+// Re-running the auth migration must not silently restore an intentionally removed role.
+$pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
+$pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'")
+    ->execute(['id' => $userId]);
+$pdo->exec($authMigration);
+assertIntegration(!App\Core\Authorization::isSuperAdmin($userId), 'Reapplying auth migration must not restore a removed Super Admin role.');
+$pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
+$superRole->execute(['id' => $userId]);
 App\Core\Authorization::audit($userId, 'ci.audit.test', 'user', (string)$userId, ['test' => true]);
 $audit = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :id AND action = 'ci.audit.test'");
 $audit->execute(['id' => $userId]);
