@@ -95,6 +95,15 @@ try {
     $cookie = $cookieFrom($first);
     $csrf = $csrfFrom($first);
     installerCheck($cookie !== '' && $csrf !== '', 'Installer must issue a session cookie and CSRF token.');
+    $installCookieHeader = '';
+    foreach ($first['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_install=') === 0) {
+            $installCookieHeader = $header;
+            break;
+        }
+    }
+    installerCheck(stripos($installCookieHeader, 'httponly') !== false, 'Installer session cookies must be HttpOnly.');
+    installerCheck(stripos($installCookieHeader, 'samesite=Strict') !== false, 'Installer session cookies must use SameSite=Strict.');
 
     $badConnection = $post($csrf, [
         'host' => '127.0.0.1', 'port' => '1', 'name' => $dbName, 'user' => $dbUser,
