@@ -118,6 +118,8 @@ final class AuthController
 
     public function verifyEmailForm(): void
     {
+        header('Cache-Control: no-store, private');
+        header('Referrer-Policy: no-referrer');
         $token = trim((string)($_GET['token'] ?? ''));
         $valid = false;
         if (preg_match('/^[a-f0-9]{64}$/', $token)) {
@@ -243,6 +245,8 @@ final class AuthController
 
     public function showResetPassword(): void
     {
+        header('Cache-Control: no-store, private');
+        header('Referrer-Policy: no-referrer');
         $token = trim((string)($_GET['token'] ?? ''));
         $valid = false;
         if (preg_match('/^[a-f0-9]{64}$/', $token)) {
@@ -364,7 +368,8 @@ final class AuthController
             'INSERT INTO login_history (user_id,email_attempted,ip_address,user_agent,success)
              VALUES (:uid,:email,:ip,:ua,:success)'
         );
-        $log->bindValue(':uid', $success ? (int)$user['id'] : null, $success ? PDO::PARAM_INT : PDO::PARAM_NULL);
+        $knownUserId = $user ? (int)$user['id'] : null;
+        $log->bindValue(':uid', $knownUserId, $knownUserId === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
         $log->bindValue(':email', $email);
         $log->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
         $log->bindValue(':ua', substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500));
