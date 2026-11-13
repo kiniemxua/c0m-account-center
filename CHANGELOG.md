@@ -9,9 +9,10 @@
 - Add server-side session inventory, revoke-one and revoke-other-device flows.
 - Add database-backed Super Admin, Admin and Member roles, permission checks and admin controls.
 - Serialize privileged role/status changes, audit them in the same transaction and protect the final active super administrator.
-- Add registration setting management and admin audit events.
-- Expand MariaDB integration tests for token expiry/replay, login session fixation and identifier throttling.
+- Add account profile preferences for display name, username, language and timezone.
+- Add password change with current-password verification, independent throttling, session/token revocation and security email.
+- Add migration 003 for Vietnamese as the default language of newly created profiles.
+- Expand MariaDB integration tests for token expiry/replay, login session fixation, identifier throttling, profile preferences and password change.
 - Add SMTP protocol tests and update cPanel/mail/security documentation.
-- Retain cPanel installer recovery, hardened sessions, independent login throttles and PHP/MariaDB CI.
 
 > This release remains under active development and is not production-ready.
