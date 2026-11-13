@@ -83,8 +83,15 @@ try {
         return $request('POST', http_build_query(['_csrf' => $csrf] + $fields), $cookie);
     };
 
-    $first = $request('GET');
-    installerCheck($first['status'] === 200, 'Installer must render over real HTTP.');
+    $deadline = microtime(true) + 8;
+    do {
+        $first = $request('GET');
+        if ($first['status'] === 200) {
+            break;
+        }
+        usleep(50000);
+    } while (microtime(true) < $deadline);
+    installerCheck($first['status'] === 200, 'Installer must render over real HTTP (status ' . $first['status'] . ').');
     $cookie = $cookieFrom($first);
     $csrf = $csrfFrom($first);
     installerCheck($cookie !== '' && $csrf !== '', 'Installer must issue a session cookie and CSRF token.');
