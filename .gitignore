@@ -1,0 +1,6 @@
+/config/database.php
+/installer/installed.lock
+/vendor/
+/.env
+*.log
+.DS_Store
