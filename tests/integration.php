@@ -237,7 +237,7 @@ $_SESSION = [];
 session_regenerate_id(true);
 $preAuthSessionId = session_id();
 $_POST = [
-    '_csrf' => App\\Core\\Csrf::token(),
+    '_csrf' => App\Core\Csrf::token(),
     'email' => $registrationEmail,
     'password' => 'NewStrongPassword84',
 ];
@@ -253,12 +253,12 @@ $authenticatedSession = $sessionLookup->fetch();
 assertIntegration($authenticatedSession && (int)$authenticatedSession['user_id'] === (int)$registered['id'] && $authenticatedSession['revoked_at'] === null, 'Successful login must persist a live server-side session.');
 
 // Unknown account failures must be logged and independently throttled by identifier.
-App\\Core\\SessionManager::invalidate();
+App\Core\SessionManager::invalidate();
 $throttleEmail = 'throttle-' . bin2hex(random_bytes(5)) . '@example.test';
 $_SESSION = [];
 session_regenerate_id(true);
 $_POST = [
-    '_csrf' => App\\Core\\Csrf::token(),
+    '_csrf' => App\Core\Csrf::token(),
     'email' => $throttleEmail,
     'password' => 'WrongPassword99',
 ];
@@ -276,7 +276,7 @@ $controller->login();
 ob_end_clean();
 assertIntegration(http_response_code() === 429, 'The next failed attempt must be throttled by account identifier.');
 $pdo->prepare('DELETE FROM login_history WHERE email_attempted = :email')->execute(['email' => $throttleEmail]);
-App\\Core\\SessionManager::invalidate();
+App\Core\SessionManager::invalidate();
 
 
 $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$registered['id']]);
