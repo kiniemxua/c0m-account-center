@@ -65,7 +65,7 @@ final class AdminController
             if ($targetSuperAdmin && !Authorization::isSuperAdmin($actorId)) {
                 throw new \RuntimeException('super_admin_forbidden');
             }
-            if ($targetSuperAdmin && $status !== 'active' && count($activeSuperAdmins) <= 1) {
+            if ($targetSuperAdmin && $targetRow['status'] === 'active' && $status !== 'active' && count($activeSuperAdmins) <= 1) {
                 throw new \RuntimeException('last_super_admin');
             }
 
