@@ -106,7 +106,7 @@ try {
     };
 
     $insecureRequest = $request('GET', '/login', '', '', false);
-    httpCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'HTTPS is required'), 'The application must reject HTTP when HTTPS is not proven.');
+    httpCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'Yêu cầu HTTPS'), 'The application must reject HTTP when HTTPS is not proven.');
 
     $deadline = microtime(true) + 8;
     do {
@@ -136,6 +136,27 @@ try {
         $csrf = $match[1];
     }
     httpCheck($csrf !== '', 'The login form must expose its session-bound CSRF token.');
+    httpCheck(str_contains($login['body'], '<html lang="vi">'), 'Guest requests must default to Vietnamese.');
+
+    $guestLanguage = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf,
+        'language' => 'en',
+        'return_to' => '/login',
+    ]), $cookie);
+    httpCheck($guestLanguage['status'] === 303, 'Guest language switching must redirect safely.');
+    $localeCookie = '';
+    foreach ($guestLanguage['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
+            $localeCookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    httpCheck($localeCookie === 'c0m_lang=en', 'Guest language selection must persist in the locale cookie.');
+    $cookie .= '; ' . $localeCookie;
+    $englishLogin = $request('GET', '/login', '', $cookie);
+    httpCheck($englishLogin['status'] === 200 && str_contains($englishLogin['body'], '<html lang="en">'), 'The guest language must persist across application pages.');
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $englishLogin['body'], $match)) {
+        $csrf = $match[1];
+    }
 
     // Exercise registration, email verification, password reset and replay through the real router.
     $flowEmail = 'http-flow-' . bin2hex(random_bytes(5)) . '@example.test';
@@ -156,6 +177,7 @@ try {
     httpCheck($registerResponse['status'] === 200 && str_contains($registerResponse['body'], 'verification email'), 'Registration must complete through the HTTP router.');
 
     $mailLog = is_file($mailLogPath) ? (string)file_get_contents($mailLogPath) : '';
+    httpCheck(str_contains($mailLog, 'Hello HTTP Flow Member'), 'Verification email must use the guest-selected English language.');
     httpCheck(preg_match('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $verifyMatch) === 1, 'Registration must send a one-time verification link through the mail adapter.');
     $verifyToken = $verifyMatch[1];
     $verifyPage = $request('GET', '/verify-email?token=' . rawurlencode($verifyToken), '', $cookie);
@@ -177,6 +199,7 @@ try {
     $forgotResponse = $request('POST', '/forgot-password', http_build_query(['_csrf' => $forgotCsrf, 'email' => $flowEmail]), $cookie);
     httpCheck($forgotResponse['status'] === 200 && str_contains($forgotResponse['body'], 'If an active account matches'), 'Password recovery must return the generic HTTP response.');
     $mailLog = (string)file_get_contents($mailLogPath);
+    httpCheck(str_contains($mailLog, 'Use this one-time link to reset your password'), 'Password reset email must use the recipient English preference.');
     httpCheck(preg_match('/reset-password\?token=([a-f0-9]{64})/', $mailLog, $resetMatch) === 1, 'Password recovery must send a one-time reset link through the mail adapter.');
     $resetToken = $resetMatch[1];
     $resetPage = $request('GET', '/reset-password?token=' . rawurlencode($resetToken), '', $cookie);
@@ -228,14 +251,17 @@ try {
         }
     }
     httpCheck($flowAuthCookie !== '', 'HTTP login after password reset must issue a rotated session cookie.');
+    $flowAuthCookie .= '; ' . $localeCookie;
     $flowDashboard = $request('GET', '/dashboard', '', $flowAuthCookie);
-    httpCheck($flowDashboard['status'] === 200 && str_contains($flowDashboard['body'], 'HTTP Flow Member'), 'Verified account must reach the dashboard after reset and login.');
+    httpCheck($flowDashboard['status'] === 200 && str_contains($flowDashboard['body'], '<html lang="en">') && str_contains($flowDashboard['body'], 'HTTP Flow Member'), 'The authenticated account must keep its saved English language after login.');
     $flowLogoutCsrf = '';
     if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $flowDashboard['body'], $match)) {
         $flowLogoutCsrf = $match[1];
     }
     $flowLogout = $request('POST', '/logout', http_build_query(['_csrf' => $flowLogoutCsrf]), $flowAuthCookie);
     httpCheck($flowLogout['status'] === 303, 'The HTTP flow account must be able to log out.');
+    $afterLocaleLogout = $request('GET', '/login', '', $flowAuthCookie);
+    httpCheck($afterLocaleLogout['status'] === 200 && str_contains($afterLocaleLogout['body'], '<html lang="en">'), 'The guest language must remain selected after logout.');
 
     // Login regenerated and logout destroyed the prior session; start a fresh CSRF session for the member fixture.
     $login = $request('GET', '/login');
