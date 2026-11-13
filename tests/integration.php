@@ -275,6 +275,10 @@ $pdo->prepare(
     'INSERT INTO sessions (id, user_id, ip_address, user_agent, last_activity, expires_at)
      VALUES (:id, :user_id, NULL, "reset-test", NOW(), DATE_ADD(NOW(), INTERVAL 1 HOUR))'
 )->execute(['id' => $sessionHash, 'user_id' => (int)$registered['id']]);
+$_SESSION = [];
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'en', 'return_to' => '/login'];
+(new App\Controllers\LanguageController())->switch();
+assertIntegration(App\Core\Localization::current() === 'en', 'Guest language switch must update the current request.');
 $_SESSION['user_id'] = (int)$registered['id'];
 $_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' => 'NewStrongPassword84'];
 ob_start();
@@ -427,11 +431,19 @@ $preserved = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :
 $preserved->execute(['id' => (int)$registered['id']]);
 assertIntegration($preserved->fetchColumn() === 'en', 'Re-running the language migration must not overwrite an existing account preference.');
 $_SESSION['user_id'] = (int)$registered['id'];
-App\Core\Localization::initialize();
-assertIntegration(App\Core\Localization::current() === 'en', 'Authenticated account language must override a guest language.');
+$_SESSION['locale'] = 'vi';
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'vi', 'return_to' => '/dashboard'];
+(new App\Controllers\LanguageController())->switch();
+$switched = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$switched->execute(['id' => (int)$registered['id']]);
+assertIntegration($switched->fetchColumn() === 'vi', 'Authenticated language switch must persist to the account profile.');
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'en', 'return_to' => '/dashboard'];
+(new App\Controllers\LanguageController())->switch();
+$switched->execute(['id' => (int)$registered['id']]);
+assertIntegration($switched->fetchColumn() === 'en', 'Authenticated language can be switched back to English.');
 $_SESSION['locale'] = 'vi';
 App\Core\Localization::initialize();
-assertIntegration(App\Core\Localization::current() === 'en', 'Stored account language must remain authoritative over session locale.');
+assertIntegration(App\Core\Localization::current() === 'en', 'Stored account language must remain authoritative over guest/session locale.');
 
 
 // Password change requires the current password, revokes all sessions and sends a notification.

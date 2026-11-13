@@ -13,6 +13,7 @@ $returnTo = (string)($_SERVER['REQUEST_URI'] ?? '/');
 <option value="en" <?= $currentLocale === 'en' ? 'selected' : '' ?>>English</option>
 </select>
 </form>
+<script>window.C0M_I18N = <?= json_encode(Localization::javascriptMessages(['Confirm','Cancel','Saved','An error occurred.','Please try again.']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <script>
 (() => {
  const key = 'c0m-form:' + location.pathname;

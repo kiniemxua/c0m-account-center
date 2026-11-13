@@ -38,7 +38,7 @@ The repository contains an account/authentication foundation:
 5. Visit /installer/ over HTTPS and create the first administrator.
 6. Keep storage/install.lock, deny public access to /installer/ after setup and make config files read-only.
 
-See docs/INSTALLATION.md, docs/MAIL.md and docs/SECURITY.md.
+See docs/INSTALLATION.md, docs/LOCALIZATION.md, docs/MAIL.md and docs/SECURITY.md.
 
 ## Tests
 

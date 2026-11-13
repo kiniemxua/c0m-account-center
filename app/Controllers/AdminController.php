@@ -36,7 +36,7 @@ final class AdminController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $actorId = Authorization::requirePermission('users.manage');
         $targetId = (int)($_POST['user_id'] ?? 0);
@@ -118,7 +118,7 @@ final class AdminController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $actorId = (int)($_SESSION['user_id'] ?? 0);
         if ($actorId < 1 || !Authorization::isSuperAdmin($actorId)) {
@@ -208,7 +208,7 @@ final class AdminController
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!Csrf::verify($_POST['_csrf'] ?? null)) {
                 http_response_code(419);
-                exit('Invalid CSRF token');
+                exit(\App\Core\t('Invalid CSRF token'));
             }
             $enabled = ($_POST['registration_enabled'] ?? '0') === '1' ? '1' : '0';
             $stmt = $pdo->prepare(

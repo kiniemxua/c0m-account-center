@@ -23,10 +23,6 @@ final class LanguageController
         if ($userId > 0) {
             $stmt = Database::connection()->prepare('UPDATE user_profiles SET language = :language WHERE user_id = :id');
             $stmt->execute(['language' => $locale, 'id' => $userId]);
-            if ($stmt->rowCount() < 0) {
-                http_response_code(500);
-                exit(Localization::translate('Could not save your language preference.'));
-            }
             Localization::set($locale);
             Localization::writeGuestCookie($locale);
         } else {

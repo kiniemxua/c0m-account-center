@@ -2,11 +2,18 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__, 2);
+$installerLocale = (string)($_GET['lang'] ?? $_COOKIE['c0m_lang'] ?? 'vi');
+if (!in_array($installerLocale, ['vi', 'en'], true)) $installerLocale = 'vi';
+if (isset($_GET['lang']) && in_array($_GET['lang'], ['vi', 'en'], true)) {
+    setcookie('c0m_lang', $installerLocale, ['expires' => time() + 31536000, 'path' => '/', 'secure' => true, 'httponly' => true, 'samesite' => 'Lax']);
+}
+$installerCatalog = require $root . '/lang/' . $installerLocale . '.php';
+$installerT = static fn(string $key): string => (string)($installerCatalog[$key] ?? $key);
 require_once $root . '/app/Core/RequestSecurity.php';
 if (!\App\Core\RequestSecurity::isHttps($root)) {
     http_response_code(400);
     header('Cache-Control: no-store');
-    exit('HTTPS is required. Configure direct HTTPS or trusted proxy addresses before installation.');
+    exit($installerT('HTTPS is required. Configure direct HTTPS or trusted proxy addresses before installation.'));
 }
 $configPath = $root . '/config/database.php';
 $storagePath = $root . '/storage';
@@ -172,40 +179,63 @@ if (!$done && empty($_SESSION['install_csrf'])) {
 }
 ?>
 <!doctype html>
-<html lang="en">
+<html lang="<?= htmlspecialchars($installerLocale, ENT_QUOTES, 'UTF-8') ?>">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>c0m.me Installer</title>
 <link rel="stylesheet" href="/assets/css/app.css">
 </head>
-<body>
+<body><form method="get" class="language-switcher" style="position:fixed;top:12px;right:12px;z-index:5"><label for="installer-language"><?= htmlspecialchars($installerT("Language"), ENT_QUOTES, 'UTF-8') ?></label><select id="installer-language" name="lang" onchange="this.form.submit()"><option value="vi" <?= $installerLocale === 'vi' ? 'selected' : '' ?>>Tiếng Việt</option><option value="en" <?= $installerLocale === 'en' ? 'selected' : '' ?>>English</option></select></form>
 <main class="auth-wrap">
 <a class="brand" href="/">c0m.me</a>
 <section class="auth-card">
-<span class="eyebrow">SETUP WIZARD</span>
-<h1><?= $done ? 'Installation locked' : 'Set up your Account Center' ?></h1>
+<span class="eyebrow"><?= htmlspecialchars($installerT("SETUP WIZARD"), ENT_QUOTES, 'UTF-8') ?></span>
+<h1><?= $done ? '<?= htmlspecialchars($installerT("Installation locked"), ENT_QUOTES, 'UTF-8') ?>' : '<?= htmlspecialchars($installerT("Set up your Account Center"), ENT_QUOTES, 'UTF-8') ?>' ?></h1>
 <?php if ($done): ?>
-<p><?= $error ? htmlspecialchars($error, ENT_QUOTES, 'UTF-8') : 'The installation is locked. Remove public access to /installer/ and sign in with the administrator account.' ?></p>
-<a class="button full" href="/login">Continue to sign in</a>
+<p><?= $error ? htmlspecialchars($installerT($error), ENT_QUOTES, 'UTF-8') : 'The installation is locked. Remove public access to /installer/ and sign in with the administrator account.' ?></p>
+<a class="button full" href="/login"><?= htmlspecialchars($installerT("Continue to sign in"), ENT_QUOTES, 'UTF-8') ?></a>
 <?php else: ?>
-<p>PHP 8.2+, PDO MySQL and a newly created database are required.</p>
-<?php if ($error): ?><div class="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
+<p><?= htmlspecialchars($installerT("PHP 8.2+, PDO MySQL and a newly created database are required."), ENT_QUOTES, 'UTF-8') ?></p>
+<?php if ($error): ?><div class="alert"><?= htmlspecialchars($installerT($error), ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <form method="post">
 <input type="hidden" name="_csrf" value="<?= htmlspecialchars($_SESSION['install_csrf'], ENT_QUOTES, 'UTF-8') ?>">
-<label>Database host</label><input name="host" value="localhost" required>
-<label>Port</label><input name="port" type="number" value="3306" min="1" max="65535" required>
-<label>Database name</label><input name="name" required>
-<label>Database username</label><input name="user" required>
-<label>Database password</label><input name="password" type="password" autocomplete="new-password">
+<label><?= htmlspecialchars($installerT("Database host"), ENT_QUOTES, 'UTF-8') ?></label><input name="host" value="localhost" required>
+<label><?= htmlspecialchars($installerT("Port"), ENT_QUOTES, 'UTF-8') ?></label><input name="port" type="number" value="3306" min="1" max="65535" required>
+<label><?= htmlspecialchars($installerT("Database name"), ENT_QUOTES, 'UTF-8') ?></label><input name="name" required>
+<label><?= htmlspecialchars($installerT("Database username"), ENT_QUOTES, 'UTF-8') ?></label><input name="user" required>
+<label><?= htmlspecialchars($installerT("Database password"), ENT_QUOTES, 'UTF-8') ?></label><input name="password" type="password" autocomplete="new-password">
 <hr>
-<label>Administrator display name</label><input name="admin_name" value="Administrator" required>
-<label>Administrator email</label><input name="admin_email" type="email" required>
-<label>Administrator password (12+ characters)</label><input name="admin_password" type="password" minlength="12" autocomplete="new-password" required>
-<button class="button full" type="submit">Install Account Center</button>
+<label><?= htmlspecialchars($installerT("Administrator display name"), ENT_QUOTES, 'UTF-8') ?></label><input name="admin_name" value="Administrator" required>
+<label><?= htmlspecialchars($installerT("Administrator email"), ENT_QUOTES, 'UTF-8') ?></label><input name="admin_email" type="email" required>
+<label><?= htmlspecialchars($installerT("Administrator password (12+ characters)"), ENT_QUOTES, 'UTF-8') ?></label><input name="admin_password" type="password" minlength="12" autocomplete="new-password" required>
+<button class="button full" type="submit"><?= htmlspecialchars($installerT("Install Account Center"), ENT_QUOTES, 'UTF-8') ?></button>
 </form>
 <?php endif; ?>
 </section>
 </main>
+<script>
+(() => {
+ const key = 'c0m-installer-form';
+ const selector = document.getElementById('installer-language');
+ if (selector) selector.form.addEventListener('submit', () => {
+   const values = [];
+   document.querySelectorAll('input,select,textarea').forEach(el => {
+     if (!el.name || ['password','hidden','file'].includes(el.type) || el === selector) return;
+     values.push({name:el.name,value:el.type === 'checkbox' ? el.checked : el.value,type:el.type});
+   });
+   try { sessionStorage.setItem(key, JSON.stringify(values)); } catch (_) {}
+ });
+ try {
+   const values = JSON.parse(sessionStorage.getItem(key) || '[]');
+   values.forEach(v => {
+     const el = document.querySelector('[name="' + CSS.escape(v.name) + '"]');
+     if (!el || el.type === 'password' || el.type === 'hidden') return;
+     if (el.type === 'checkbox') el.checked = !!v.value; else el.value = v.value;
+   });
+   if (values.length) sessionStorage.removeItem(key);
+ } catch (_) {}
+})();
+</script>
 </body>
 </html>

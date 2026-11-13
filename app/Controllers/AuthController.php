@@ -32,7 +32,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
 
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
@@ -145,7 +145,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $token = trim((string)($_POST['token'] ?? ''));
         $verified = false;
@@ -186,7 +186,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $pdo = Database::connection();
@@ -220,7 +220,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $pdo = Database::connection();
@@ -266,7 +266,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $token = trim((string)($_POST['token'] ?? ''));
         $password = (string)($_POST['password'] ?? '');
@@ -320,7 +320,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $validEmail = filter_var($email, FILTER_VALIDATE_EMAIL);
@@ -392,7 +392,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         SessionManager::revokeCurrent();
         $_SESSION = [];

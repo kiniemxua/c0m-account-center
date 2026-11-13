@@ -29,7 +29,7 @@ final class AccountController
         $account = $stmt->fetch();
         if (!$account) {
             http_response_code(404);
-            exit('Account not found.');
+            exit(\App\Core\t('Account not found.'));
         }
         $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
         $error = null;
@@ -40,7 +40,7 @@ final class AccountController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId < 1) {
@@ -94,7 +94,7 @@ final class AccountController
             }
             error_log('Profile update failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             http_response_code(500);
-            exit('Profile update failed.');
+            exit(\App\Core\t('Profile update failed.'));
         }
         header('Location: /account?saved=1', true, 303);
     }
@@ -103,7 +103,7 @@ final class AccountController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId < 1) {
@@ -132,7 +132,7 @@ final class AccountController
 
         $pdo->beginTransaction();
         try {
-            $lookup = $pdo->prepare('SELECT email, password_hash FROM users WHERE id = :id AND status = \'active\' FOR UPDATE');
+            $lookup = $pdo->prepare('SELECT u.email, u.password_hash, p.language FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.id = :id AND u.status = \'active\' FOR UPDATE');
             $lookup->execute(['id' => $userId]);
             $user = $lookup->fetch();
             if (!$user || !password_verify($current, $user['password_hash'])) {
@@ -167,7 +167,7 @@ final class AccountController
             }
             error_log('Password change failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             http_response_code(500);
-            exit('Password change failed.');
+            exit(\App\Core\t('Password change failed.'));
         }
 
         try {
