@@ -23,7 +23,7 @@ final class LanguageController
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId > 0) {
             try {
-                $stmt = Database::connection()->prepare('UPDATE user_profiles SET language = :language WHERE user_id = :id');
+                $stmt = Database::connection()->prepare('INSERT INTO user_profiles (user_id, language) VALUES (:id, :language) ON DUPLICATE KEY UPDATE language = VALUES(language)');
                 $stmt->execute(['language' => $locale, 'id' => $userId]);
                 Localization::set($locale);
                 Localization::writeGuestCookie($locale);
