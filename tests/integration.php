@@ -54,12 +54,25 @@ $legacyUser = $pdo->prepare("INSERT INTO users (email,password_hash,status,email
 $legacyUser->execute(['email' => $legacyEmail, 'hash' => password_hash('Legacy-Locale-42!', PASSWORD_DEFAULT)]);
 $legacyUserId = (int)$pdo->lastInsertId();
 $pdo->prepare("INSERT INTO user_profiles (user_id, language) VALUES (:id, 'en')")->execute(['id' => $legacyUserId]);
+
+$orphanEmail = 'locale-backfill-' . bin2hex(random_bytes(6)) . '@example.test';
+$pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())")
+    ->execute(['email' => $orphanEmail, 'hash' => password_hash('Orphan-Locale-42!', PASSWORD_DEFAULT)]);
+$orphanUserId = (int)$pdo->lastInsertId();
+
 $pdo->exec($preferencesMigration);
 $legacyPreference = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
 $legacyPreference->execute(['id' => $legacyUserId]);
 assertIntegration($legacyPreference->fetchColumn() === 'en', 'The first language migration must preserve an existing English preference.');
-$pdo->prepare('DELETE FROM user_profiles WHERE user_id = :id')->execute(['id' => $legacyUserId]);
-$pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $legacyUserId]);
+$legacyPreference->execute(['id' => $orphanUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'vi', 'The language migration must backfill a missing profile with the Vietnamese default.');
+$pdo->exec($preferencesMigration);
+$legacyPreference->execute(['id' => $legacyUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'en', 'Reapplying the language migration must not overwrite an existing English preference.');
+$legacyPreference->execute(['id' => $orphanUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'vi', 'Reapplying the language migration must preserve the backfilled profile.');
+$pdo->prepare('DELETE FROM user_profiles WHERE user_id IN (:legacy, :orphan)')->execute(['legacy' => $legacyUserId, 'orphan' => $orphanUserId]);
+$pdo->prepare('DELETE FROM users WHERE id IN (:legacy, :orphan)')->execute(['legacy' => $legacyUserId, 'orphan' => $orphanUserId]);
 $pdo->exec($preferencesMigration); // Preference defaults must be safe to reapply.
 $languageColumn = $pdo->query("SHOW COLUMNS FROM user_profiles LIKE 'language'")->fetch();
 assertIntegration($languageColumn && $languageColumn['Default'] === 'vi', 'New account profiles must default to Vietnamese.');
