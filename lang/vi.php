@@ -173,4 +173,5 @@ return [
 "App Hub" => "Trung tâm ứng dụng",
 "Your digital home" => "Ngôi nhà số của bạn",
 "User administration" => "Quản lý người dùng",
+"No members found." => "Chưa tìm thấy thành viên nào.",
 ];

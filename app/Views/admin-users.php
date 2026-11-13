@@ -51,6 +51,7 @@
 <?php endif; ?>
 </article>
 <?php endforeach; ?>
+<?php if (!$users): ?><article><p><?= \App\Core\t('No members found.') ?></p></article><?php endif; ?>
 </section>
 </main>
 </body>

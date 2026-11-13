@@ -173,4 +173,5 @@ return [
 "App Hub" => "App Hub",
 "Your digital home" => "Your digital home",
 "User administration" => "User administration",
+"No members found." => "No members found.",
 ];
