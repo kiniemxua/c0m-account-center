@@ -204,6 +204,111 @@ final class AuthController
         require BASE_PATH . '/app/Views/register-result.php';
     }
 
+    public function showForgotPassword(): void
+    {
+        $error = null;
+        require BASE_PATH . '/app/Views/forgot-password.php';
+    }
+
+    public function forgotPassword(): void
+    {
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
+        $email = strtolower(trim((string)($_POST['email'] ?? '')));
+        $pdo = Database::connection();
+        $limited = $this->recordAuthAttempt($pdo, 'password_reset', $email);
+        if (!$limited && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $stmt = $pdo->prepare("SELECT id, display_name FROM users WHERE email = :email AND status = 'active' LIMIT 1");
+            $stmt->execute(['email' => $email]);
+            $user = $stmt->fetch();
+            if ($user) {
+                try {
+                    $token = $this->issueToken($pdo, (int)$user['id'], 'password_reset', 3600);
+                    $url = AppConfig::baseUrl() . '/reset-password?token=' . rawurlencode($token);
+                    MailService::send(
+                        $email,
+                        'Reset your c0m.me password',
+                        "Hello " . ($user['display_name'] ?? '') . ",\n\nUse this one-time link to reset your password:\n{$url}\n\nThe link expires in one hour. If you did not request this, ignore this message."
+                    );
+                } catch (Throwable $e) {
+                    error_log('Password reset email could not be delivered: ' . $e->getMessage());
+                }
+            }
+        }
+        $message = 'If an active account matches that address, password reset instructions will be sent shortly.';
+        require BASE_PATH . '/app/Views/password-reset-result.php';
+    }
+
+    public function showResetPassword(): void
+    {
+        $token = trim((string)($_GET['token'] ?? ''));
+        $valid = false;
+        if (preg_match('/^[a-f0-9]{64}$/', $token)) {
+            $stmt = Database::connection()->prepare(
+                "SELECT id FROM auth_tokens
+                 WHERE token_hash = :token_hash AND token_type = 'password_reset'
+                   AND used_at IS NULL AND expires_at > NOW() LIMIT 1"
+            );
+            $stmt->execute(['token_hash' => hash('sha256', $token)]);
+            $valid = $stmt->fetchColumn() !== false;
+        }
+        require BASE_PATH . '/app/Views/reset-password.php';
+    }
+
+    public function resetPassword(): void
+    {
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
+        $token = trim((string)($_POST['token'] ?? ''));
+        $password = (string)($_POST['password'] ?? '');
+        $reset = false;
+        if ($this->strongPassword($password) && preg_match('/^[a-f0-9]{64}$/', $token)) {
+            $pdo = Database::connection();
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare(
+                    "SELECT id, user_id FROM auth_tokens
+                     WHERE token_hash = :token_hash AND token_type = 'password_reset'
+                       AND used_at IS NULL AND expires_at > NOW()
+                     LIMIT 1 FOR UPDATE"
+                );
+                $stmt->execute(['token_hash' => hash('sha256', $token)]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $updateUser = $pdo->prepare(
+                        "UPDATE users SET password_hash = :password_hash, updated_at = NOW()
+                         WHERE id = :user_id AND status = 'active'"
+                    );
+                    $updateUser->execute([
+                        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                        'user_id' => (int)$row['user_id'],
+                    ]);
+                    if ($updateUser->rowCount() === 1) {
+                        $pdo->prepare('UPDATE auth_tokens SET used_at = NOW() WHERE user_id = :user_id AND used_at IS NULL')
+                            ->execute(['user_id' => (int)$row['user_id']]);
+                        $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE user_id = :user_id AND revoked_at IS NULL')
+                            ->execute(['user_id' => (int)$row['user_id']]);
+                        $reset = true;
+                    }
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log('Password reset failed: ' . $e->getMessage());
+            }
+        }
+        if ($reset && !empty($_SESSION['user_id'])) {
+            SessionManager::invalidate();
+        }
+        require BASE_PATH . '/app/Views/password-reset-result.php';
+    }
+
     public function login(): void
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
