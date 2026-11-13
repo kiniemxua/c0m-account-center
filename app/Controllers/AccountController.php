@@ -91,7 +91,7 @@ final class AccountController
                 $this->renderWithInput($userId, $error);
                 return;
             }
-            error_log('Profile update failed: ' . $e->getMessage());
+            error_log('Profile update failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             http_response_code(500);
             exit('Profile update failed.');
         }
@@ -164,7 +164,7 @@ final class AccountController
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
-            error_log('Password change failed: ' . $e->getMessage());
+            error_log('Password change failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             http_response_code(500);
             exit('Password change failed.');
         }
@@ -176,7 +176,7 @@ final class AccountController
                 "The password for your c0m.me account was changed. All active sessions were signed out. If you did not make this change, contact support immediately."
             );
         } catch (Throwable $e) {
-            error_log('Password-change notification could not be delivered: ' . $e->getMessage());
+            error_log('Password-change notification could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
 
         $_SESSION = [];
