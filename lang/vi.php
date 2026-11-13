@@ -188,4 +188,6 @@ return [
 'System' => 'Hệ thống',
 'Details' => 'Chi tiết',
 'No audit events found.' => 'Không tìm thấy sự kiện kiểm toán.',
+'optional' => 'không bắt buộc',
+'If the request can be completed, an email will be sent shortly.' => 'Nếu có thể xử lý yêu cầu, email sẽ được gửi trong ít phút.',
 ];
