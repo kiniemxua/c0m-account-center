@@ -17,12 +17,16 @@ jobs:
         include:
           - php-version: '8.2'
             database-image: mariadb:11.4
+            database-healthcheck: healthcheck.sh --connect --innodb_initialized
           - php-version: '8.3'
             database-image: mariadb:11.4
+            database-healthcheck: healthcheck.sh --connect --innodb_initialized
           - php-version: '8.4'
             database-image: mariadb:11.4
+            database-healthcheck: healthcheck.sh --connect --innodb_initialized
           - php-version: '8.4'
             database-image: mysql:8.4
+            database-healthcheck: mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password
     services:
       mariadb:
         image: ${{ matrix.database-image }}
@@ -36,7 +40,7 @@ jobs:
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password"
+          --health-cmd="${{ matrix.database-healthcheck }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
