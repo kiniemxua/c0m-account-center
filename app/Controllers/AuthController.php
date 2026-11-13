@@ -34,7 +34,7 @@ final class AuthController
         // transport peer; forwarded headers are deliberately not trusted here.
         $identityLimit = $pdo->prepare(
             'SELECT COUNT(*) FROM login_history
-             WHERE email_attempted = :email
+             WHERE email_attempted = :email AND success = 0
                AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
         );
         $identityLimit->execute(['email' => $email]);
@@ -42,10 +42,10 @@ final class AuthController
         if ($packedIp !== null) {
             $ipLimit = $pdo->prepare(
                 'SELECT COUNT(*) FROM login_history
-                 WHERE ip_address = :ip
+                 WHERE ip_address = :ip AND success = 0
                    AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
             );
-            $ipLimit->bindValue(':ip', $packedIp, \\PDO::PARAM_LOB);
+            $ipLimit->bindValue(':ip', $packedIp, \PDO::PARAM_LOB);
             $ipLimit->execute();
             $ipBlocked = (int)$ipLimit->fetchColumn() >= 30;
         }
