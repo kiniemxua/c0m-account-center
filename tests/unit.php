@@ -46,6 +46,13 @@ try {
     $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
     $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
     check(App\Core\SessionManager::requestIsSecure(), 'A configured trusted proxy may assert HTTPS.');
+
+    session_name('c0m_proxy_cookie_test');
+    App\Core\SessionManager::start();
+    $proxyCookie = session_get_cookie_params();
+    check(($proxyCookie['secure'] ?? false) === true, 'A trusted HTTPS proxy must set the actual session cookie Secure flag.');
+    session_destroy();
+
     $_SERVER['REMOTE_ADDR'] = '203.0.113.9';
     check(!App\Core\SessionManager::requestIsSecure(), 'A non-trusted client must not assert HTTPS through a forwarded header.');
     $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https,http';
