@@ -39,7 +39,7 @@
 - Installer HTTP failure on database connection, partial migration failure caused by restricted DB privileges, safe retry, and existing-account password-verification behavior.
 - HTTP router requests for login rendering, security headers, CSRF rejection, unauthenticated admin access denial and unknown routes.
 - Concurrent transaction test that races two Super Admin removals and verifies that one active Super Admin remains.
-- GitHub Actions matrix for PHP 8.2, 8.3 and 8.4 with MariaDB 11.4.
+- GitHub Actions matrix for PHP 8.2, 8.3 and 8.4 with MariaDB 11.4, plus MySQL 8.4 on PHP 8.4.
 
 ## Remaining work / not independently audited
 
