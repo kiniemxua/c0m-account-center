@@ -29,6 +29,20 @@ if (file_put_contents($dbConfigPath, $configSource, LOCK_EX) === false) {
     throw new RuntimeException('Could not create temporary HTTP test configuration.');
 }
 
+$pdo = new PDO(
+    sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $dbConfig['host'], $dbConfig['port'], $dbConfig['name']),
+    $dbConfig['user'],
+    $dbConfig['password'],
+    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+);
+$testEmail = 'http-' . bin2hex(random_bytes(5)) . '@example.test';
+$testPassword = 'HttpTestPassword-456';
+$pdo->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES (:email, :hash, 'HTTP test member', 'active', NOW())")
+    ->execute(['email' => $testEmail, 'hash' => password_hash($testPassword, PASSWORD_DEFAULT)]);
+$testUserId = (int)$pdo->lastInsertId();
+$pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:id)')->execute(['id' => $testUserId]);
+$pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'")->execute(['id' => $testUserId]);
+
 $portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
 if (!$portSocket) {
     @unlink($dbConfigPath);
@@ -61,6 +75,7 @@ try {
             'header' => implode("\r\n", $headers),
             'content' => $body,
             'ignore_errors' => true,
+            'follow_location' => 0,
             'timeout' => 3,
         ]]);
         $response = @file_get_contents($base . $path, false, $context);
@@ -114,6 +129,39 @@ try {
     $settings = $request('GET', '/admin/settings', '', $cookie);
     httpCheck($settings['status'] === 401, 'An unauthenticated HTTP request must not access admin settings.');
 
+    $loginSuccess = $request('POST', '/login', http_build_query([
+        '_csrf' => $csrf,
+        'email' => $testEmail,
+        'password' => $testPassword,
+    ]), $cookie);
+    httpCheck($loginSuccess['status'] === 303, 'A valid member login must complete through the HTTP router.');
+    $authCookie = '';
+    foreach ($loginSuccess['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_session=') === 0) {
+            $authCookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    httpCheck($authCookie !== '', 'Successful HTTP login must rotate and issue an authenticated session cookie.');
+
+    $dashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck($dashboard['status'] === 200 && str_contains($dashboard['body'], 'HTTP test member'), 'The authenticated member must reach the dashboard through HTTP.');
+    $memberAdmin = $request('GET', '/admin/users', '', $authCookie);
+    httpCheck($memberAdmin['status'] === 403, 'A member must be denied admin routes even with a valid session.');
+
+    $dashboardCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $dashboard['body'], $match)) {
+        $dashboardCsrf = $match[1];
+    }
+    httpCheck($dashboardCsrf !== '', 'The authenticated dashboard must issue a logout CSRF token.');
+    $logout = $request('POST', '/logout', http_build_query(['_csrf' => $dashboardCsrf]), $authCookie);
+    httpCheck($logout['status'] === 303, 'Logout must complete through the HTTP router.');
+    $session = $pdo->prepare('SELECT revoked_at FROM sessions WHERE user_id = :id ORDER BY last_activity DESC LIMIT 1');
+    $session->execute(['id' => $testUserId]);
+    httpCheck($session->fetchColumn() !== null, 'HTTP logout must revoke the persisted server-side session.');
+
+    $afterLogout = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck($afterLogout['status'] === 303, 'A logged-out session must no longer access the dashboard.');
+
     $missing = $request('GET', '/route-that-does-not-exist');
     httpCheck($missing['status'] === 404, 'Unknown HTTP routes must return 404.');
 
@@ -127,4 +175,5 @@ try {
     }
     proc_close($process);
     @unlink($dbConfigPath);
+    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
 }
