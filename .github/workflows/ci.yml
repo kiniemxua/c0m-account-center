@@ -46,6 +46,8 @@ jobs:
         run: php tests/unit.php
       - name: SMTP provider test
         run: php tests/smtp.php
+      - name: Installer failure and recovery tests
+        run: php tests/installer.php
       - name: MariaDB integration tests
         run: php tests/integration.php
       - name: HTTP router integration tests
