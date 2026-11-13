@@ -52,7 +52,7 @@ foreach (array_keys($requiredKeys) as $key) {
 }
 
 $authorizationSource = file_get_contents(BASE_PATH . '/app/Core/Authorization.php');
-localeCheck($authorizationSource !== false && str_contains($authorizationSource, "t('You do not have permission"), 'Authorization errors must be localized.');
+localeCheck($authorizationSource !== false && str_contains($authorizationSource, "t('You do not have permission") && str_contains($authorizationSource, "t('Authentication required.") && !preg_match('~exit\\s*\\(\\s*["\\x27]~', $authorizationSource), 'Authorization errors must be localized.');
 $routerSource = file_get_contents(BASE_PATH . '/public/index.php');
 localeCheck($routerSource !== false && str_contains($routerSource, "'/admin/audit'"), 'The audit log route must be registered.');
 localeCheck(is_file(BASE_PATH . '/app/Views/admin-audit.php'), 'The localized audit log view must exist.');
