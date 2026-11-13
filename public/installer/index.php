@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 $root = dirname(__DIR__, 2);
+require_once $root . '/app/Core/RequestSecurity.php';
 $configPath = $root . '/config/database.php';
 $storagePath = $root . '/storage';
 $lockPath = $storagePath . '/install.lock';
@@ -44,7 +45,7 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
     session_set_cookie_params([
         'lifetime' => 0,
         'path' => '/',
-        'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        'secure' => \App\Core\RequestSecurity::isHttps($root),
         'httponly' => true,
         'samesite' => 'Strict',
     ]);
