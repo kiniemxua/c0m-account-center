@@ -41,7 +41,7 @@ final class Authorization
         }
         if (!self::hasPermission($userId, $permission)) {
             http_response_code(403);
-            exit(\App\\Core\\t('You do not have permission to access this resource.'));
+            exit(\App\Core\t('You do not have permission to access this resource.'));
         }
         return $userId;
     }
