@@ -62,6 +62,14 @@ INSERT IGNORE INTO roles (role_key, label) VALUES
   ('admin', 'Administrator'),
   ('member', 'Member');
 
+-- The first provisioned account is the bootstrap administrator on legacy installs.
+INSERT IGNORE INTO user_roles (user_id, role_id)
+SELECT u.id, r.id FROM users u
+CROSS JOIN roles r
+WHERE r.role_key = 'super_admin'
+ORDER BY u.id ASC
+LIMIT 1;
+
 INSERT IGNORE INTO permissions (permission_key, label) VALUES
   ('users.view', 'View users'),
   ('users.manage', 'Manage users'),
