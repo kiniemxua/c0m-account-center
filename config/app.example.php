@@ -1,8 +1,9 @@
 <?php
 declare(strict_types=1);
 
-// Copy to config/app.php and set the canonical HTTPS URL.
-// Do not derive security-sensitive email links from the incoming Host header.
+// Copy to config/app.php. Only list immediate reverse proxies that you control.
+// Do not add end-user IP ranges or trust X-Forwarded-* from arbitrary clients.
 return [
     'base_url' => 'https://accounts.example.com',
+    'trusted_proxies' => [],
 ];
