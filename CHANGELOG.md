@@ -11,7 +11,7 @@
 - Serialize privileged role/status changes, audit them in the same transaction and protect the final active super administrator.
 - Add account profile preferences for display name, username, language and timezone.
 - Add password change with current-password verification, independent throttling, session/token revocation and security email.
-- Add migration 003 for Vietnamese as the default language of newly created profiles.
+- Add migration 003 for Vietnamese as the default language of newly created profiles and safely backfill missing legacy profile rows without overwriting existing preferences.
 - Add Vietnamese-first and English UI localization for public, account, security, admin, audit and installer screens.
 - Persist guest language choices in an HttpOnly cookie/session and authenticated choices in account profile preferences; keep account preference authoritative.
 - Localize validation/system errors and verification, reset and password-change security emails.
