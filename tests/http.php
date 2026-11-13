@@ -191,10 +191,15 @@ try {
         'password' => $newFlowPassword,
     ]), $cookie);
     httpCheck($resetResponse['status'] === 200, 'Password reset must complete through the HTTP router.');
-    $flowUser = $pdo->prepare('SELECT status, password_hash FROM users WHERE email = :email');
+    $flowUser = $pdo->prepare('SELECT id, status, password_hash FROM users WHERE email = :email');
     $flowUser->execute(['email' => $flowEmail]);
     $flowUserRow = $flowUser->fetch();
     httpCheck($flowUserRow && $flowUserRow['status'] === 'active' && password_verify($newFlowPassword, $flowUserRow['password_hash']), 'HTTP password reset must persist the new password for the verified account.');
+    $flowRole = $pdo->prepare(
+        "SELECT r.role_key FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id"
+    );
+    $flowRole->execute(['id' => (int)$flowUserRow['id']]);
+    httpCheck($flowRole->fetchColumn() === 'member', 'New registrations must receive the default Member role.');
     $resetReplay = $request('POST', '/reset-password', http_build_query([
         '_csrf' => $resetCsrf,
         'token' => $resetToken,
