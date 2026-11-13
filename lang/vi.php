@@ -170,4 +170,7 @@ return [
 "If an active account matches that address, password reset instructions will be sent shortly." => "Nếu có tài khoản đang hoạt động khớp với địa chỉ này, hướng dẫn đặt lại mật khẩu sẽ được gửi trong ít phút.",
 "Installer" => "Trình cài đặt",
 "Database port" => "Cổng cơ sở dữ liệu",
+"App Hub" => "Trung tâm ứng dụng",
+"Your digital home" => "Ngôi nhà số của bạn",
+"User administration" => "Quản lý người dùng",
 ];

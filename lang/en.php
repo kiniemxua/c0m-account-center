@@ -170,4 +170,7 @@ return [
 "If an active account matches that address, password reset instructions will be sent shortly." => "If an active account matches that address, password reset instructions will be sent shortly.",
 "Installer" => "Installer",
 "Database port" => "Database port",
+"App Hub" => "App Hub",
+"Your digital home" => "Your digital home",
+"User administration" => "User administration",
 ];
