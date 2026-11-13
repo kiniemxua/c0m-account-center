@@ -17,13 +17,36 @@
 6. Verify the installer reports that installation is locked. Keep storage/install.lock and deny public access to /installer/ using cPanel File Manager or access rules.
 7. Confirm login works over HTTPS, then remove write permission from config/.
 
-The installer writes config/database.php atomically and creates storage/install.lock only after schema and administrator creation. If the config was written but lock creation was interrupted, the next request verifies the configured database and completes the lock. If failure occurs before config creation, repeatable migrations can be retried. MySQL DDL is not transactional; see database/README.md before manual recovery.
+The installer writes config/database.php and storage/install.lock atomically. It applies repeatable migrations in lexical order. If a migration fails, no completed config/lock is written; correct the database permissions and retry. MySQL DDL implicitly commits, so some tables may already exist after failure. The shipped migrations are designed to be re-run safely. Do not manually drop tables as a first recovery step.
+
+If config/database.php exists but the process stopped before creating install.lock, the next installer request verifies the saved DB connection/schema and completes the lock. If an existing account is selected as the initial administrator, the entered administrator password must match that account's existing password; the installer will not silently promote an arbitrary existing account. If an install lock exists but the database config is missing, restore the config from a secure backup rather than rerunning setup against the existing database.
+
+If DB connection fails, check the DB host, database name, user grants and cPanel database-user assignment. If migration fails, inspect the PHP/server error log (installer logs exception class/code, not submitted credentials), grant the required schema permissions, then retry. A config/lock write failure may require correcting ownership/permissions for config/ and storage/. The automated CI suite covers DB connection and partial-migration failures; actual cPanel filesystem permission behavior still requires deployment-specific verification.
 
 ## Mail configuration
 
 Copy config/mail.example.php to config/mail.php. Keep the file outside public/ and never commit real credentials. For development only, set mode to development_log; this writes one-time verification/reset links to storage/mail.log, so protect and delete that file after testing.
 
-For production, configure an external SMTP provider using mode smtp, host, port, encryption (tls or ssl), username, password, from_email and from_name. SMTP authentication is refused when encryption is none. CraneMail and other external SMTP providers can be used; no local mail server is required. See docs/MAIL.md.
+For production, configure an external SMTP provider using mode smtp, host, port, encryption (tls or ssl), username, password, from_email and from_name. SMTP authentication is refused when encryption is none. TLS peer and hostname verification are enabled. CraneMail and other external SMTP providers can be used; no local mail server is required. See docs/MAIL.md.
+
+## HTTPS and reverse proxies
+
+Direct HTTPS requests automatically receive Secure session cookies. If TLS terminates at Cloudflare or another reverse proxy and the origin connection is HTTP, explicitly configure the immediate proxy IP addresses in config/app.php:
+
+```php
+<?php
+declare(strict_types=1);
+
+return [
+    'base_url' => 'https://accounts.example.com',
+    'trusted_proxies' => [
+        '127.0.0.1',
+        // Add only the exact, stable IP addresses of proxies that connect directly to this origin.
+    ],
+];
+```
+
+The application trusts X-Forwarded-Proto only when REMOTE_ADDR exactly matches one of these configured IP addresses and the header value is exactly https. Never list arbitrary client IP ranges. If the proxy IP is not configured, the app deliberately does not trust forwarded headers; configure the web server to provide direct HTTPS to PHP or add the correct immediate proxy addresses.
 
 ## Manual configuration
 
@@ -31,10 +54,10 @@ If you prefer manual setup, copy config/database.example.php to config/database.
 
 ## Session policy
 
-Authentication sessions use strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax cookies. The Secure attribute is enabled when PHP detects HTTPS. Server-side session records enforce a 30-minute idle timeout and a 12-hour absolute expiry. Account status and server-side revocation are checked on authenticated requests.
+Authentication sessions use strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax cookies. The Secure attribute is enabled for direct HTTPS or explicitly trusted HTTPS proxies. Server-side session records enforce a 30-minute idle timeout and a 12-hour absolute expiry. Account status and server-side revocation are checked on authenticated requests.
 
 ## Tests
 
-Run `php tests/unit.php` and `php tests/smtp.php`. For database integration checks, set DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD, then run `php tests/integration.php`. GitHub Actions is configured to run these against MariaDB.
+Run `php tests/unit.php`, `php tests/smtp.php`, `php tests/installer.php`, `php tests/integration.php` and `php tests/http.php`. Database-backed tests require a disposable MariaDB/MySQL database and DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD. HTTP and installer tests require PHP proc_open and bind only to localhost. The installer test creates a temporary restricted DB user and removes it after execution.
 
 This project remains under development and is not production-ready. App Registry, OAuth 2.0/OIDC SSO, PKCE, passkeys and QR login are not implemented.
