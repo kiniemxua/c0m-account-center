@@ -26,16 +26,24 @@ $pdo = new PDO(
 try {
     $pdo->beginTransaction();
     $active = App\Core\SuperAdminGuard::lockActive($pdo);
+    $isSuperAdmin = static function (int $id) use ($pdo): bool {
+        $check = $pdo->prepare(
+            "SELECT 1 FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id
+             WHERE ur.user_id = :id AND r.role_key = 'super_admin' LIMIT 1"
+        );
+        $check->execute(['id' => $id]);
+        return $check->fetchColumn() !== false;
+    };
     $actor = $pdo->prepare('SELECT status FROM users WHERE id = :id FOR UPDATE');
     $actor->execute(['id' => $actorId]);
-    if ($actor->fetchColumn() !== 'active' || !App\Core\Authorization::isSuperAdmin($actorId)) {
+    if ($actor->fetchColumn() !== 'active' || !$isSuperAdmin($actorId)) {
         throw new RuntimeException('actor_no_longer_super_admin');
     }
 
     $target = $pdo->prepare('SELECT status FROM users WHERE id = :id FOR UPDATE');
     $target->execute(['id' => $targetId]);
     $status = $target->fetchColumn();
-    $isSuper = App\Core\Authorization::isSuperAdmin($targetId);
+    $isSuper = $isSuperAdmin($targetId);
     App\Core\SuperAdminGuard::assertCanRemove($active, $targetId, $isSuper, $status === 'active', false);
 
     if ($holdLock) {
