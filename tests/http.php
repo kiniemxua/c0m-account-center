@@ -331,36 +331,6 @@ try {
     $memberAdmin = $request('GET', '/admin/users', '', $authCookie);
     httpCheck($memberAdmin['status'] === 403, 'A member must be denied admin routes even with a valid session.');
 
-    // Promote this isolated fixture to Admin and exercise the real admin locale flow.
-    $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'admin'")
-        ->execute(['id' => $testUserId]);
-    $adminPage = $request('GET', '/admin/users', '', $authCookie);
-    httpCheck($adminPage['status'] === 200 && str_contains($adminPage['body'], '<html lang="vi">'), 'An authenticated administrator must reach the admin interface in the saved account language.');
-    $adminCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $adminPage['body'], $match)) {
-        $adminCsrf = $match[1];
-    }
-    httpCheck($adminCsrf !== '', 'The administrator interface must expose the normal CSRF token.');
-    $adminLanguage = $request('POST', '/language', http_build_query([
-        '_csrf' => $adminCsrf, 'language' => 'en', 'return_to' => '/admin/users',
-    ]), $authCookie);
-    httpCheck($adminLanguage['status'] === 303 && in_array('Location: /admin/users', $adminLanguage['headers'], true), 'An administrator must be able to switch language from an admin route.');
-    $adminPreference = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
-    $adminPreference->execute(['id' => $testUserId]);
-    httpCheck($adminPreference->fetchColumn() === 'en', 'Administrator language switching must persist the account preference.');
-    $adminPageVi = $request('GET', '/admin/users', '', $authCookie);
-    httpCheck($adminPageVi['status'] === 200 && str_contains($adminPageVi['body'], '<html lang="en">'), 'The administrator interface must render in the newly saved English language.');
-    $adminCsrfVi = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $adminPageVi['body'], $match)) {
-        $adminCsrfVi = $match[1];
-    }
-    $adminLanguageBack = $request('POST', '/language', http_build_query([
-        '_csrf' => $adminCsrfVi, 'language' => 'vi', 'return_to' => '/admin/users',
-    ]), $authCookie);
-    httpCheck($adminLanguageBack['status'] === 303, 'An administrator must be able to switch back to English.');
-    $adminPageEn = $request('GET', '/admin/users', '', $authCookie);
-    httpCheck($adminPageEn['status'] === 200 && str_contains($adminPageEn['body'], '<html lang="vi">'), 'The administrator Vietnamese preference must persist across requests.');
-
     $dashboardCsrf = '';
     if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $dashboard['body'], $match)) {
         $dashboardCsrf = $match[1];
@@ -383,6 +353,36 @@ try {
     $authCookie .= '; ' . $memberLocaleCookie;
     $englishDashboard = $request('GET', '/dashboard', '', $authCookie);
     httpCheck($englishDashboard['status'] === 200 && str_contains($englishDashboard['body'], '<html lang="en">'), 'The saved member language must override prior session and cookie state.');
+    // Promote this isolated fixture to Admin and exercise the real admin locale flow.
+    $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'admin'")
+        ->execute(['id' => $testUserId]);
+    $adminPage = $request('GET', '/admin/users', '', $authCookie);
+    httpCheck($adminPage['status'] === 200 && str_contains($adminPage['body'], '<html lang="vi">'), 'An authenticated administrator must reach the admin interface in the saved account language.');
+    $adminCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $adminPage['body'], $match)) {
+        $adminCsrf = $match[1];
+    }
+    httpCheck($adminCsrf !== '', 'The administrator interface must expose the normal CSRF token.');
+    $adminLanguage = $request('POST', '/language', http_build_query([
+        '_csrf' => $adminCsrf, 'language' => 'en', 'return_to' => '/admin/users',
+    ]), $authCookie);
+    httpCheck($adminLanguage['status'] === 303 && in_array('Location: /admin/users', $adminLanguage['headers'], true), 'An administrator must be able to switch language from an admin route.');
+    $adminPreference = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+    $adminPreference->execute(['id' => $testUserId]);
+    httpCheck($adminPreference->fetchColumn() === 'en', 'Administrator language switching must persist the account preference.');
+    $adminPageEn = $request('GET', '/admin/users', '', $authCookie);
+    httpCheck($adminPageVi['status'] === 200 && str_contains($adminPageVi['body'], '<html lang="en">'), 'The administrator interface must render in the newly saved English language.');
+    $adminCsrfEn = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $adminPageVi['body'], $match)) {
+        $adminCsrfVi = $match[1];
+    }
+    $adminLanguageBack = $request('POST', '/language', http_build_query([
+        '_csrf' => $adminCsrfVi, 'language' => 'vi', 'return_to' => '/admin/users',
+    ]), $authCookie);
+    httpCheck($adminLanguageBack['status'] === 303, 'An administrator must be able to switch back to English.');
+    $adminPageVi = $request('GET', '/admin/users', '', $authCookie);
+    httpCheck($adminPageVi['status'] === 200 && str_contains($adminPageVi['body'], '<html lang="vi">'), 'The administrator Vietnamese preference must persist across requests.');
+
     $logoutCsrf = '';
     if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $englishDashboard['body'], $match)) {
         $logoutCsrf = $match[1];
