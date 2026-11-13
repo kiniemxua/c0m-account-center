@@ -1,10 +1,15 @@
 <?php
 declare(strict_types=1);
+
 namespace App\Controllers;
 
+use App\Core\AppConfig;
 use App\Core\Csrf;
 use App\Core\Database;
+use App\Core\MailService;
 use App\Core\SessionManager;
+use PDO;
+use Throwable;
 
 final class AuthController
 {
@@ -14,9 +19,197 @@ final class AuthController
         require BASE_PATH . '/app/Views/login.php';
     }
 
+    public function showRegister(): void
+    {
+        $registrationEnabled = $this->registrationEnabled();
+        $error = null;
+        require BASE_PATH . '/app/Views/register.php';
+    }
+
+    public function register(): void
+    {
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
+
+        $email = strtolower(trim((string)($_POST['email'] ?? '')));
+        $display = trim((string)($_POST['display_name'] ?? ''));
+        $password = (string)($_POST['password'] ?? '');
+        $registrationEnabled = $this->registrationEnabled();
+
+        if (!$registrationEnabled) {
+            http_response_code(403);
+            $error = 'Registration is currently closed.';
+            require BASE_PATH . '/app/Views/register.php';
+            return;
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190 || !$this->strongPassword($password)) {
+            $error = 'Use a valid email address and a password of at least 12 characters containing upper and lower case letters and a number.';
+            require BASE_PATH . '/app/Views/register.php';
+            return;
+        }
+        if ($display === '' || mb_strlen($display) > 100) {
+            $error = 'Enter a display name of up to 100 characters.';
+            require BASE_PATH . '/app/Views/register.php';
+            return;
+        }
+
+        $pdo = Database::connection();
+        if ($this->recordAuthAttempt($pdo, 'register', $email)) {
+            http_response_code(429);
+            header('Retry-After: 900');
+            $error = 'Too many requests. Please wait before trying again.';
+            require BASE_PATH . '/app/Views/register.php';
+            return;
+        }
+
+        $stmt = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
+        $stmt->execute(['email' => $email]);
+        if ($stmt->fetchColumn() !== false) {
+            $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+            require BASE_PATH . '/app/Views/register-result.php';
+            return;
+        }
+
+        $pdo->beginTransaction();
+        try {
+            $insert = $pdo->prepare(
+                "INSERT INTO users (email, password_hash, display_name, status)
+                 VALUES (:email, :password_hash, :display_name, 'pending')"
+            );
+            $insert->execute([
+                'email' => $email,
+                'password_hash' => password_hash($password, PASSWORD_DEFAULT),
+                'display_name' => $display,
+            ]);
+            $userId = (int)$pdo->lastInsertId();
+            $profile = $pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:user_id)');
+            $profile->execute(['user_id' => $userId]);
+            $token = $this->issueToken($pdo, $userId, 'email_verification', 86400);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            // A duplicate race is deliberately indistinguishable from an existing address.
+            if ((string)$e->getCode() !== '23000') {
+                error_log('Registration failed: ' . $e->getMessage());
+            }
+            $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+            require BASE_PATH . '/app/Views/register-result.php';
+            return;
+        }
+
+        try {
+            $url = AppConfig::baseUrl() . '/verify-email?token=' . rawurlencode($token);
+            MailService::send(
+                $email,
+                'Verify your c0m.me account',
+                "Hello {$display},\n\nVerify your email address using this link:\n{$url}\n\nThis link expires in 24 hours. If you did not request this account, you can ignore this message."
+            );
+        } catch (Throwable $e) {
+            error_log('Verification email could not be delivered: ' . $e->getMessage());
+        }
+
+        $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+        require BASE_PATH . '/app/Views/register-result.php';
+    }
+
+    public function verifyEmailForm(): void
+    {
+        $token = trim((string)($_GET['token'] ?? ''));
+        $valid = false;
+        if (preg_match('/^[a-f0-9]{64}$/', $token)) {
+            $stmt = Database::connection()->prepare(
+                "SELECT id FROM auth_tokens
+                 WHERE token_hash = :token_hash AND token_type = 'email_verification'
+                   AND used_at IS NULL AND expires_at > NOW() LIMIT 1"
+            );
+            $stmt->execute(['token_hash' => hash('sha256', $token)]);
+            $valid = $stmt->fetchColumn() !== false;
+        }
+        require BASE_PATH . '/app/Views/verify-email.php';
+    }
+
+    public function verifyEmail(): void
+    {
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
+        $token = trim((string)($_POST['token'] ?? ''));
+        $verified = false;
+        if (preg_match('/^[a-f0-9]{64}$/', $token)) {
+            $pdo = Database::connection();
+            $pdo->beginTransaction();
+            try {
+                $stmt = $pdo->prepare(
+                    "SELECT id, user_id FROM auth_tokens
+                     WHERE token_hash = :token_hash AND token_type = 'email_verification'
+                       AND used_at IS NULL AND expires_at > NOW()
+                     LIMIT 1 FOR UPDATE"
+                );
+                $stmt->execute(['token_hash' => hash('sha256', $token)]);
+                $row = $stmt->fetch();
+                if ($row) {
+                    $consume = $pdo->prepare('UPDATE auth_tokens SET used_at = NOW() WHERE id = :id AND used_at IS NULL');
+                    $consume->execute(['id' => (int)$row['id']]);
+                    $activate = $pdo->prepare(
+                        "UPDATE users SET status = 'active', email_verified_at = NOW()
+                         WHERE id = :user_id AND status = 'pending' AND email_verified_at IS NULL"
+                    );
+                    $activate->execute(['user_id' => (int)$row['user_id']]);
+                    $verified = $activate->rowCount() === 1;
+                }
+                $pdo->commit();
+            } catch (Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                error_log('Email verification failed: ' . $e->getMessage());
+            }
+        }
+        require BASE_PATH . '/app/Views/verify-result.php';
+    }
+
+    public function resendVerification(): void
+    {
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
+        $email = strtolower(trim((string)($_POST['email'] ?? '')));
+        $pdo = Database::connection();
+        $limited = $this->recordAuthAttempt($pdo, 'resend_verification', $email);
+        if (!$limited && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $stmt = $pdo->prepare("SELECT id, display_name FROM users WHERE email = :email AND status = 'pending' LIMIT 1");
+            $stmt->execute(['email' => $email]);
+            $user = $stmt->fetch();
+            if ($user) {
+                try {
+                    $token = $this->issueToken($pdo, (int)$user['id'], 'email_verification', 86400);
+                    $url = AppConfig::baseUrl() . '/verify-email?token=' . rawurlencode($token);
+                    MailService::send(
+                        $email,
+                        'Verify your c0m.me account',
+                        "Hello " . ($user['display_name'] ?? '') . ",\n\nVerify your email address:\n{$url}\n\nThis link expires in 24 hours."
+                    );
+                } catch (Throwable $e) {
+                    error_log('Verification resend failed: ' . $e->getMessage());
+                }
+            }
+        }
+        $message = 'If this address has a pending account, a new verification email will be sent shortly.';
+        require BASE_PATH . '/app/Views/register-result.php';
+    }
+
     public function login(): void
     {
-        if (!Csrf::verify($_POST['_csrf'] ?? null)) { http_response_code(419); exit('Invalid CSRF token'); }
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $validEmail = filter_var($email, FILTER_VALIDATE_EMAIL);
         $password = (string)($_POST['password'] ?? '');
@@ -30,8 +223,6 @@ final class AuthController
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         $packedIp = filter_var($ip, FILTER_VALIDATE_IP) ? inet_pton($ip) : null;
 
-        // Enforce independent identity and network limits. REMOTE_ADDR is the
-        // transport peer; forwarded headers are deliberately not trusted here.
         $identityLimit = $pdo->prepare(
             'SELECT COUNT(*) FROM login_history
              WHERE email_attempted = :email AND success = 0
@@ -45,7 +236,7 @@ final class AuthController
                  WHERE ip_address = :ip AND success = 0
                    AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
             );
-            $ipLimit->bindValue(':ip', $packedIp, \PDO::PARAM_LOB);
+            $ipLimit->bindValue(':ip', $packedIp, PDO::PARAM_LOB);
             $ipLimit->execute();
             $ipBlocked = (int)$ipLimit->fetchColumn() >= 30;
         }
@@ -66,11 +257,11 @@ final class AuthController
             'INSERT INTO login_history (user_id,email_attempted,ip_address,user_agent,success)
              VALUES (:uid,:email,:ip,:ua,:success)'
         );
-        $log->bindValue(':uid', $success ? (int)$user['id'] : null, $success ? \PDO::PARAM_INT : \PDO::PARAM_NULL);
+        $log->bindValue(':uid', $success ? (int)$user['id'] : null, $success ? PDO::PARAM_INT : PDO::PARAM_NULL);
         $log->bindValue(':email', $email);
-        $log->bindValue(':ip', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
+        $log->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
         $log->bindValue(':ua', substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500));
-        $log->bindValue(':success', $success ? 1 : 0, \PDO::PARAM_INT);
+        $log->bindValue(':success', $success ? 1 : 0, PDO::PARAM_INT);
         $log->execute();
 
         if (!$success) {
@@ -86,14 +277,95 @@ final class AuthController
 
     public function logout(): void
     {
-        if (!Csrf::verify($_POST['_csrf'] ?? null)) { http_response_code(419); exit('Invalid CSRF token'); }
+        if (!Csrf::verify($_POST['_csrf'] ?? null)) {
+            http_response_code(419);
+            exit('Invalid CSRF token');
+        }
         SessionManager::revokeCurrent();
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
-            $p = session_get_cookie_params();
-            setcookie(session_name(), '', time() - 42000, $p['path'], $p['domain'] ?? '', (bool)$p['secure'], (bool)$p['httponly']);
+            $params = session_get_cookie_params();
+            setcookie(session_name(), '', time() - 42000, $params['path'], $params['domain'] ?? '', (bool)$params['secure'], (bool)$params['httponly']);
         }
         session_destroy();
         header('Location: /', true, 303);
+    }
+
+    private function registrationEnabled(): bool
+    {
+        try {
+            $stmt = Database::connection()->prepare(
+                "SELECT setting_value FROM app_settings WHERE setting_key = 'registration_enabled' LIMIT 1"
+            );
+            $stmt->execute();
+            return $stmt->fetchColumn() === '1';
+        } catch (Throwable $e) {
+            return false;
+        }
+    }
+
+    private function strongPassword(string $password): bool
+    {
+        return strlen($password) >= 12
+            && preg_match('/[a-z]/', $password) === 1
+            && preg_match('/[A-Z]/', $password) === 1
+            && preg_match('/[0-9]/', $password) === 1;
+    }
+
+    private function recordAuthAttempt(PDO $pdo, string $action, string $email): bool
+    {
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        $packedIp = $ip !== false ? inet_pton($ip) : null;
+        $identifierHash = $email !== '' ? hash('sha256', $email) : null;
+        $insert = $pdo->prepare(
+            'INSERT INTO auth_attempts (action, ip_address, identifier_hash) VALUES (:action, :ip, :identifier)'
+        );
+        $insert->bindValue(':action', $action);
+        $insert->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $insert->bindValue(':identifier', $identifierHash, $identifierHash === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+        $insert->execute();
+
+        $ipCount = 0;
+        if ($packedIp !== null) {
+            $byIp = $pdo->prepare(
+                'SELECT COUNT(*) FROM auth_attempts
+                 WHERE action = :action AND ip_address = :ip
+                   AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
+            );
+            $byIp->bindValue(':action', $action);
+            $byIp->bindValue(':ip', $packedIp, PDO::PARAM_LOB);
+            $byIp->execute();
+            $ipCount = (int)$byIp->fetchColumn();
+        }
+        $byIdentifier = $pdo->prepare(
+            'SELECT COUNT(*) FROM auth_attempts
+             WHERE action = :action AND identifier_hash = :identifier
+               AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
+        );
+        $byIdentifier->execute(['action' => $action, 'identifier' => $identifierHash]);
+        return $ipCount > 20 || (int)$byIdentifier->fetchColumn() > 5;
+    }
+
+    private function issueToken(PDO $pdo, int $userId, string $type, int $ttl): string
+    {
+        $pdo->prepare(
+            'UPDATE auth_tokens SET used_at = NOW()
+             WHERE user_id = :user_id AND token_type = :type AND used_at IS NULL'
+        )->execute(['user_id' => $userId, 'type' => $type]);
+
+        $token = bin2hex(random_bytes(32));
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        $packedIp = $ip !== false ? inet_pton($ip) : null;
+        $stmt = $pdo->prepare(
+            'INSERT INTO auth_tokens (user_id, token_type, token_hash, expires_at, request_ip)
+             VALUES (:user_id, :type, :token_hash, DATE_ADD(NOW(), INTERVAL :ttl SECOND), :ip)'
+        );
+        $stmt->bindValue(':user_id', $userId, PDO::PARAM_INT);
+        $stmt->bindValue(':type', $type);
+        $stmt->bindValue(':token_hash', hash('sha256', $token));
+        $stmt->bindValue(':ttl', $ttl, PDO::PARAM_INT);
+        $stmt->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $stmt->execute();
+        return $token;
     }
 }
