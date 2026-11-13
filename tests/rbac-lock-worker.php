@@ -58,6 +58,6 @@ try {
         echo "last_super_admin_blocked\n";
         exit(0);
     }
-    fwrite(STDERR, "RBAC worker failed (" . get_class($e) . ").\n");
+    fwrite(STDERR, "RBAC worker failed (" . get_class($e) . ", " . (in_array($e->getMessage(), ['actor_no_longer_super_admin', 'last_super_admin'], true) ? $e->getMessage() : 'unexpected') . ").\n");
     exit(1);
 }
