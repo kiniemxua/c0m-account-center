@@ -127,7 +127,6 @@ try {
 
     @unlink($configPath);
     @unlink($lockPath);
-    $root->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$adminId]);
 
     // Existing accounts may only be promoted after proving possession of their password.
     $memberPassword = 'ExistingMemberPassword-456';
@@ -172,7 +171,7 @@ try {
     @unlink($lockPath);
     try {
         $root->exec("DROP USER IF EXISTS '{$limitedUser}'@'%'");
-        $root->exec("DELETE FROM users WHERE email = 'existing-member@example.test'");
+        $root->exec("DELETE FROM users WHERE email IN ('installer-ci@example.test', 'existing-member@example.test')");
     } catch (Throwable) {
         // Preserve the original test failure; CI database is disposable.
     }
