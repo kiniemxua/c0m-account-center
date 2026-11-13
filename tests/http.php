@@ -142,7 +142,7 @@ try {
     $registerPage = $request('GET', '/register', '', $cookie);
     httpCheck($registerPage['status'] === 200, 'The registration form must render through HTTP.');
     $registerCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $registerPage['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $registerPage['body'], $match)) {
         $registerCsrf = $match[1];
     }
     httpCheck($registerCsrf !== '', 'Registration form must include CSRF protection.');
@@ -155,12 +155,12 @@ try {
     httpCheck($registerResponse['status'] === 200 && str_contains($registerResponse['body'], 'verification email'), 'Registration must complete through the HTTP router.');
 
     $mailLog = is_file($mailLogPath) ? (string)file_get_contents($mailLogPath) : '';
-    httpCheck(preg_match('/verify-email\\?token=([a-f0-9]{64})/', $mailLog, $verifyMatch) === 1, 'Registration must send a one-time verification link through the mail adapter.');
+    httpCheck(preg_match('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $verifyMatch) === 1, 'Registration must send a one-time verification link through the mail adapter.');
     $verifyToken = $verifyMatch[1];
     $verifyPage = $request('GET', '/verify-email?token=' . rawurlencode($verifyToken), '', $cookie);
     httpCheck($verifyPage['status'] === 200 && str_contains($verifyPage['body'], 'Confirm your email'), 'The verification token must render a confirmation page.');
     $verifyCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $verifyPage['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $verifyPage['body'], $match)) {
         $verifyCsrf = $match[1];
     }
     $verified = $request('POST', '/verify-email', http_build_query(['_csrf' => $verifyCsrf, 'token' => $verifyToken]), $cookie);
@@ -170,18 +170,18 @@ try {
 
     $forgotPage = $request('GET', '/forgot-password', '', $cookie);
     $forgotCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $forgotPage['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $forgotPage['body'], $match)) {
         $forgotCsrf = $match[1];
     }
     $forgotResponse = $request('POST', '/forgot-password', http_build_query(['_csrf' => $forgotCsrf, 'email' => $flowEmail]), $cookie);
     httpCheck($forgotResponse['status'] === 200 && str_contains($forgotResponse['body'], 'If an active account matches'), 'Password recovery must return the generic HTTP response.');
     $mailLog = (string)file_get_contents($mailLogPath);
-    httpCheck(preg_match('/reset-password\\?token=([a-f0-9]{64})/', $mailLog, $resetMatch) === 1, 'Password recovery must send a one-time reset link through the mail adapter.');
+    httpCheck(preg_match('/reset-password\?token=([a-f0-9]{64})/', $mailLog, $resetMatch) === 1, 'Password recovery must send a one-time reset link through the mail adapter.');
     $resetToken = $resetMatch[1];
     $resetPage = $request('GET', '/reset-password?token=' . rawurlencode($resetToken), '', $cookie);
     httpCheck($resetPage['status'] === 200 && str_contains($resetPage['body'], 'Choose a new password'), 'The reset token must render a password form.');
     $resetCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $resetPage['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $resetPage['body'], $match)) {
         $resetCsrf = $match[1];
     }
     $newFlowPassword = 'HttpFlowUpdatedPass84';
@@ -206,7 +206,7 @@ try {
 
     $flowLoginPage = $request('GET', '/login', '', $cookie);
     $flowLoginCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $flowLoginPage['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $flowLoginPage['body'], $match)) {
         $flowLoginCsrf = $match[1];
     }
     $flowLogin = $request('POST', '/login', http_build_query([
@@ -225,7 +225,7 @@ try {
     $flowDashboard = $request('GET', '/dashboard', '', $flowAuthCookie);
     httpCheck($flowDashboard['status'] === 200 && str_contains($flowDashboard['body'], 'HTTP Flow Member'), 'Verified account must reach the dashboard after reset and login.');
     $flowLogoutCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $flowDashboard['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $flowDashboard['body'], $match)) {
         $flowLogoutCsrf = $match[1];
     }
     $flowLogout = $request('POST', '/logout', http_build_query(['_csrf' => $flowLogoutCsrf]), $flowAuthCookie);
@@ -263,7 +263,7 @@ try {
     httpCheck($memberAdmin['status'] === 403, 'A member must be denied admin routes even with a valid session.');
 
     $dashboardCsrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $dashboard['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $dashboard['body'], $match)) {
         $dashboardCsrf = $match[1];
     }
     httpCheck($dashboardCsrf !== '', 'The authenticated dashboard must issue a logout CSRF token.');
