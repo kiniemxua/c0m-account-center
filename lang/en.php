@@ -54,7 +54,7 @@ return [
 'Please choose a supported language.' => 'Please choose a supported language.',
 'Could not save your language preference.' => 'Could not save your language preference.',
 'Language preference saved.' => 'Language preference saved.',
-'Vietnamese' => 'Vietnamese', 'English' => 'English', 'Save' => 'Save',
+'Vietnamese' => 'Vietnamese', 'English' => 'English', 'Save' => 'Save', 'Apply' => 'Apply',
 'Unknown browser' => 'Unknown browser', 'IP:' => 'IP:', 'Last activity:' => 'Last activity:',
 'Expires:' => 'Expires:', 'Successful sign-in' => 'Successful sign-in', 'Failed sign-in' => 'Failed sign-in',
 
