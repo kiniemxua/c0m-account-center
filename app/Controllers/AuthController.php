@@ -30,18 +30,26 @@ final class AuthController
         $ip = $_SERVER['REMOTE_ADDR'] ?? '';
         $packedIp = filter_var($ip, FILTER_VALIDATE_IP) ? inet_pton($ip) : null;
 
-        // Conservative per-identity and per-IP throttle. A dedicated distributed limiter
-        // can replace this database-backed guard as deployment scale grows.
-        $limit = $pdo->prepare(
+        // Enforce independent identity and network limits. REMOTE_ADDR is the
+        // transport peer; forwarded headers are deliberately not trusted here.
+        $identityLimit = $pdo->prepare(
             'SELECT COUNT(*) FROM login_history
-             WHERE email_attempted = :email AND created_at >= (NOW() - INTERVAL 15 MINUTE)
-             AND (:ip1 IS NULL OR ip_address = :ip2)'
+             WHERE email_attempted = :email
+               AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
         );
-        $limit->bindValue(':email', $email);
-        $limit->bindValue(':ip1', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
-        $limit->bindValue(':ip2', $packedIp, $packedIp === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
-        $limit->execute();
-        if ((int)$limit->fetchColumn() >= 10) {
+        $identityLimit->execute(['email' => $email]);
+        $ipBlocked = false;
+        if ($packedIp !== null) {
+            $ipLimit = $pdo->prepare(
+                'SELECT COUNT(*) FROM login_history
+                 WHERE ip_address = :ip
+                   AND created_at >= (NOW() - INTERVAL 15 MINUTE)'
+            );
+            $ipLimit->bindValue(':ip', $packedIp, \\PDO::PARAM_LOB);
+            $ipLimit->execute();
+            $ipBlocked = (int)$ipLimit->fetchColumn() >= 30;
+        }
+        if ((int)$identityLimit->fetchColumn() >= 10 || $ipBlocked) {
             http_response_code(429);
             header('Retry-After: 900');
             $error = 'Too many sign-in attempts. Please wait and try again.';
