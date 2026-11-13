@@ -23,8 +23,10 @@ $root = new PDO(
 );
 
 $configPath = BASE_PATH . '/config/database.php';
+$appConfigPath = BASE_PATH . '/config/app.php';
 $lockPath = BASE_PATH . '/storage/install.lock';
-installerCheck(!is_file($configPath) && !is_file($lockPath), 'Installer test requires a clean configuration and install lock.');
+installerCheck(!is_file($configPath) && !is_file($appConfigPath) && !is_file($lockPath), 'Installer test requires a clean configuration and install lock.');
+file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX);
 $limitedUser = 'c0m_installer_limited';
 $limitedPassword = 'InstallerLimitedPassword-OnlyForCI';
 $root->exec("CREATE USER IF NOT EXISTS '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
@@ -44,7 +46,7 @@ fclose($pipes[0]);
 try {
     $base = 'http://127.0.0.1:' . $port;
     $request = static function (string $method, string $body = '', string $cookie = '') use ($base): array {
-        $headers = ['Connection: close'];
+        $headers = ['Connection: close', 'X-Forwarded-Proto: https'];
         if ($cookie !== '') {
             $headers[] = 'Cookie: ' . $cookie;
         }
@@ -104,6 +106,7 @@ try {
     }
     installerCheck(stripos($installCookieHeader, 'httponly') !== false, 'Installer session cookies must be HttpOnly.');
     installerCheck(stripos($installCookieHeader, 'samesite=Strict') !== false, 'Installer session cookies must use SameSite=Strict.');
+    installerCheck(stripos($installCookieHeader, 'secure') !== false, 'Installer session cookies must use Secure behind the configured test proxy.');
 
     $badConnection = $post($csrf, [
         'host' => '127.0.0.1', 'port' => '1', 'name' => $dbName, 'user' => $dbUser,
@@ -154,6 +157,7 @@ try {
     installerCheck((int)$adminRole->fetchColumn() === 1, 'Initial administrator must receive the Super Admin role.');
 
     @unlink($configPath);
+    @unlink($appConfigPath);
     @unlink($lockPath);
 
     // Existing accounts may only be promoted after proving possession of their password.
