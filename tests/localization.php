@@ -26,6 +26,20 @@ foreach (['account.profile.updated','account.password.changed','user.status.chan
     localeCheck(isset($vi[$adminKey], $en[$adminKey]) && $vi[$adminKey] !== '' && $en[$adminKey] !== '', 'Admin state/audit label must be translated in both catalogs: ' . $adminKey);
 }
 localeCheck(App\Core\Localization::current() === 'vi', 'Vietnamese must be the default locale.');
+localeCheck(App\Core\Localization::all('../config/database') === $vi, 'Unsupported locale codes must never be treated as translation file paths.');
+App\Core\Localization::set('../config/database');
+localeCheck(App\Core\Localization::current() === 'vi', 'Setting an unsupported locale must safely select Vietnamese.');
+$_SESSION = ['locale' => '../config/database'];
+$_COOKIE = ['c0m_lang' => 'en'];
+App\Core\Localization::initialize();
+localeCheck(App\Core\Localization::current() === 'en', 'An invalid guest session locale must be ignored in favor of a valid cookie locale.');
+$_SESSION = [];
+$_COOKIE = ['c0m_lang' => '../config/database'];
+App\Core\Localization::initialize();
+localeCheck(App\Core\Localization::current() === 'vi', 'An invalid guest cookie locale must fall back to Vietnamese.');
+$_SESSION = [];
+$_COOKIE = [];
+App\Core\Localization::set('vi');
 $missingVi = array_diff(array_keys($en), array_keys($vi));
 $missingEn = array_diff(array_keys($vi), array_keys($en));
 localeCheck($missingVi === [] && $missingEn === [], 'Translation catalogs must have identical key coverage.');
@@ -90,12 +104,12 @@ localeCheck(App\Core\Localization::translate('Hello {name}', ['name' => 'Lan']) 
 localeCheck(App\Core\Localization::translate('unknown.internal.key') === 'System message', 'English fallback must be localized and must not expose raw keys.');
 localeCheck(App\Core\Localization::translate('An untranslated interface phrase') === 'System message', 'English fallback must not echo untranslated source phrases.');
 foreach (['vi','en','xx'] as $locale) {
-    $v = App\Core\EmailTemplates::verification($locale, 'Lan', 'https://example.test/verify?token=abc');
+    $v = App\Core\EmailTemplates::verification($locale, 'Nguyễn An', 'https://example.test/verify?token=abc');
     $p = App\Core\EmailTemplates::passwordReset($locale, 'Lan', 'https://example.test/reset?token=def');
     $s = App\Core\EmailTemplates::passwordChanged($locale);
     localeCheck(str_contains($v['text'], 'https://example.test/verify?token=abc'), 'Verification URL must remain unchanged.');
-if ($locale === 'vi') localeCheck(str_contains($v['text'], 'Xin chào Lan'), 'Vietnamese verification email must preserve UTF-8 recipient names.');
-if ($locale === 'en') localeCheck(str_contains($v['text'], 'Hello Lan'), 'English verification email must preserve the recipient name.');
+if ($locale === 'vi') localeCheck(str_contains($v['text'], 'Xin chào Nguyễn An'), 'Vietnamese verification email must preserve UTF-8 recipient names.');
+if ($locale === 'en') localeCheck(str_contains($v['text'], 'Hello Nguyễn An'), 'English verification email must preserve the recipient name.');
     if ($locale === 'xx') localeCheck(str_contains($v['text'], 'Xin chào'), 'Unsupported email locales must safely fall back to Vietnamese.');
     localeCheck(str_contains($p['text'], 'https://example.test/reset?token=def'), 'Reset URL must remain unchanged.');
     localeCheck($v['subject'] !== '' && $p['subject'] !== '' && $s['subject'] !== '', 'Localized email subjects must be present.');
