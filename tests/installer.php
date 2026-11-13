@@ -45,7 +45,7 @@ fclose($pipes[0]);
 
 try {
     $base = 'http://127.0.0.1:' . $port;
-    $request = static function (string $method, string $body = '', string $cookie = '', bool $trustedHttps = true) use ($base): array {
+    $request = static function (string $method, string $body = '', string $cookie = '', bool $trustedHttps = true, string $path = '/installer/') use ($base): array {
         $headers = ['Connection: close'];
         if ($trustedHttps) {
             $headers[] = 'X-Forwarded-Proto: https';
@@ -63,7 +63,7 @@ try {
             'ignore_errors' => true,
             'timeout' => 8,
         ]]);
-        $response = @file_get_contents($base . '/installer/', false, $context);
+        $response = @file_get_contents($base . $path, false, $context);
         $rawHeaders = $http_response_header ?? [];
         $status = 0;
         foreach ($rawHeaders as $header) {
@@ -87,6 +87,17 @@ try {
     $post = static function (string $csrf, array $fields, string $cookie) use ($request): array {
         return $request('POST', http_build_query(['_csrf' => $csrf] + $fields), $cookie);
     };
+
+    $englishInstaller = $request('GET', '', '', true, '/installer/?lang=en');
+    installerCheck($englishInstaller['status'] === 200 && str_contains($englishInstaller['body'], '<html lang="en">'), 'Installer must render in English when the locale is explicitly selected.');
+    installerCheck(str_contains($englishInstaller['body'], 'Set up your Account Center') && str_contains($englishInstaller['body'], 'Install Account Center'), 'English installer labels must use the English catalog.');
+    $englishLocaleCookie = '';
+    foreach ($englishInstaller['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
+            $englishLocaleCookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    installerCheck($englishLocaleCookie === 'c0m_lang=en', 'Installer language selection must persist in the locale cookie.');
 
     $insecureRequest = $request('GET', '', '', false);
     installerCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'HTTPS is required'), 'Installer must reject HTTP when HTTPS is not proven.');
@@ -119,12 +130,12 @@ try {
         'password' => 'DO_NOT_LEAK_DATABASE_PASSWORD', 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
     ], $cookie);
-    installerCheck($badConnection['status'] === 200 && str_contains($badConnection['body'], 'Installation failed.'), 'Database connection failure must return a generic recoverable error.');
+    installerCheck($badConnection['status'] === 200 && str_contains($badConnection['body'], 'Cài đặt thất bại.'), 'Database connection failure must return a generic recoverable error.');
     installerCheck(!str_contains($badConnection['body'], 'DO_NOT_LEAK_DATABASE_PASSWORD'), 'Database credentials must not appear in installer output.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'A failed database connection must not leave config or install lock behind.');
 
     $refreshed = $request('GET', '', $cookie);
-    installerCheck($refreshed['status'] === 200 && str_contains($refreshed['body'], 'Install'), 'Refreshing after a failed setup must leave the installer retryable.');
+    installerCheck($refreshed['status'] === 200 && str_contains($refreshed['body'], 'Cài đặt Trung tâm tài khoản'), 'Refreshing after a failed setup must leave the installer retryable.');
     $csrf = $csrfFrom($refreshed) ?: $csrf;
     $cookie = $cookieFrom($refreshed) ?: $cookie;
 
@@ -146,7 +157,7 @@ try {
         'password' => $dbPassword, 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
     ], $cookie);
-    installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Installation locked'), 'A retry with corrected DB permissions must complete installation.');
+    installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Đã khóa cài đặt'), 'A retry with corrected DB permissions must complete installation.');
     installerCheck(is_file($configPath) && is_file($lockPath), 'Successful recovery must atomically persist config and install lock.');
 
     // Simulate a crash after config persistence but before install-lock creation.
