@@ -71,6 +71,7 @@ if (!is_resource($process)) {
     throw new RuntimeException('Could not start the PHP HTTP test server.');
 }
 fclose($pipes[0]);
+$flowEmail = null;
 
 try {
     $base = 'http://127.0.0.1:' . $port;
@@ -311,6 +312,8 @@ try {
     @unlink($appConfigPath);
     @unlink($mailConfigPath);
     @unlink($mailLogPath);
-    $pdo->prepare('DELETE FROM users WHERE email = :email')->execute(['email' => $flowEmail]);
+    if (is_string($flowEmail)) {
+        $pdo->prepare('DELETE FROM users WHERE email = :email')->execute(['email' => $flowEmail]);
+    }
     $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
 }
