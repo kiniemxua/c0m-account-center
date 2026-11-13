@@ -288,4 +288,4 @@ try {
     @rmdir($tlsDirectory);
 }
 
-echo "SMTP protocol, STARTTLS, hostname verification, authentication, timeout and unavailable-server tests passed.\\n";
+echo "SMTP protocol, STARTTLS, hostname verification, authentication, timeout and unavailable-server tests passed.\n";
