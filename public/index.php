@@ -9,6 +9,7 @@ use App\Controllers\HomeController;
 use App\Controllers\AuthController;
 use App\Controllers\SecurityController;
 use App\Controllers\AdminController;
+use App\Controllers\AccountController;
 
 $router = new Router();
 $router->get('/', [HomeController::class, 'index']);
