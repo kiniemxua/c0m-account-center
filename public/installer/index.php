@@ -3,6 +3,11 @@ declare(strict_types=1);
 
 $root = dirname(__DIR__, 2);
 require_once $root . '/app/Core/RequestSecurity.php';
+if (!\\App\\Core\\RequestSecurity::isHttps($root)) {
+    http_response_code(400);
+    header('Cache-Control: no-store');
+    exit('HTTPS is required. Configure direct HTTPS or trusted proxy addresses before installation.');
+}
 $configPath = $root . '/config/database.php';
 $storagePath = $root . '/storage';
 $lockPath = $storagePath . '/install.lock';
