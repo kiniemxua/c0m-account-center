@@ -36,6 +36,13 @@ final class SmtpMailer implements MailProviderInterface
             throw new RuntimeException('SMTP configuration is invalid.');
         }
 
+        if (($username === '') !== ($password === '')) {
+            throw new RuntimeException('SMTP username and password must both be configured.');
+        }
+        if ($encryption === 'none' && $username !== '') {
+            throw new RuntimeException('SMTP authentication requires TLS or implicit SSL.');
+        }
+
         $scheme = $encryption === 'ssl' ? 'ssl://' : 'tcp://';
         $context = stream_context_create([
             'ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true],
