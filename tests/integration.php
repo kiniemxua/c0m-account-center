@@ -78,6 +78,38 @@ $pdo->exec($authMigration);
 assertIntegration(!App\Core\Authorization::isSuperAdmin($userId), 'Reapplying auth migration must not restore a removed Super Admin role.');
 $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
 $superRole->execute(['id' => $userId]);
+
+// Multiple roles must persist and render as individually selected checkboxes.
+$multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['member', 'super_admin']);
+$roleLookup = $pdo->prepare(
+    'SELECT GROUP_CONCAT(r.role_key ORDER BY r.role_key SEPARATOR ", ")
+     FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id'
+);
+$roleLookup->execute(['id' => $userId]);
+assertIntegration($roleLookup->fetchColumn() === 'member, super_admin', 'A member may hold multiple roles at the same time.');
+
+session_name('c0m_roles_test');
+session_start();
+$_SESSION['_csrf'] = App\Core\Csrf::token();
+$users = [[
+    'id' => $userId,
+    'email' => $email,
+    'display_name' => 'Multi-role test',
+    'status' => 'active',
+    'roles' => 'member, super_admin',
+    'role_keys' => $multiRoles,
+]];
+$canManage = true;
+$canAssignRoles = true;
+ob_start();
+require BASE_PATH . '/app/Views/admin-users.php';
+$multiRoleHtml = ob_get_clean();
+assertIntegration(str_contains($multiRoleHtml, 'name="roles[]"'), 'The admin UI must submit a role list rather than a single role.');
+assertIntegration(str_contains($multiRoleHtml, 'value="member" checked') && str_contains($multiRoleHtml, 'value="super_admin" checked'), 'The admin UI must show every existing role as selected.');
+session_destroy();
+$_SESSION = [];
+App\Core\UserRoleManager::replace($pdo, $userId, ['super_admin']);
+
 App\Core\Authorization::audit($userId, 'ci.audit.test', 'user', (string)$userId, ['test' => true]);
 $audit = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :id AND action = 'ci.audit.test'");
 $audit->execute(['id' => $userId]);
