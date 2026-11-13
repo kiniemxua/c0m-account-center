@@ -16,6 +16,8 @@
 - Persist guest language choices in an HttpOnly cookie/session and authenticated choices in account profile preferences; keep account preference authoritative.
 - Localize validation/system errors and verification, reset and password-change security emails.
 - Add catalog parity and unique-key checks, view-key coverage, locale fallback, JavaScript message and email-template checks.
+- Ensure authenticated accounts without a valid saved locale fall back to Vietnamese instead of inheriting stale guest preferences.
+- Harden language-switch return targets against protocol-relative, encoded and malformed redirect values; add HTTP regression coverage for CSRF, cookie flags and member preference persistence.
 - Expand MariaDB integration tests for token expiry/replay, login session fixation, identifier throttling, profile preferences and password change.
 - Add SMTP protocol tests and update cPanel/mail/security documentation.
 
