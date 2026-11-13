@@ -119,22 +119,34 @@ final class AdminController
             http_response_code(400);
             exit('Invalid role assignment.');
         }
+
         $pdo = Database::connection();
-        $currentSuper = Authorization::isSuperAdmin($targetId);
-        if ($currentSuper && $roleKey !== 'super_admin') {
-            $count = $pdo->query(
-                "SELECT COUNT(*) FROM user_roles ur
-                 INNER JOIN roles r ON r.id = ur.role_id
-                 INNER JOIN users u ON u.id = ur.user_id
-                 WHERE r.role_key = 'super_admin' AND u.status = 'active'"
-            )->fetchColumn();
-            if ((int)$count <= 1) {
-                http_response_code(409);
-                exit('The last active super administrator cannot be demoted.');
-            }
-        }
         $pdo->beginTransaction();
         try {
+            // Use the same lock order as status changes to serialize operations
+            // which could otherwise remove the final active super administrator.
+            $activeSuperAdmins = $pdo->query(
+                "SELECT u.id FROM users u
+                 INNER JOIN user_roles ur ON ur.user_id = u.id
+                 INNER JOIN roles r ON r.id = ur.role_id
+                 WHERE r.role_key = 'super_admin' AND u.status = 'active'
+                 ORDER BY u.id FOR UPDATE"
+            )->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!Authorization::isSuperAdmin($actorId)) {
+                throw new \\RuntimeException('actor_no_longer_super_admin');
+            }
+            $target = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
+            $target->execute(['id' => $targetId]);
+            if ($target->fetchColumn() === false) {
+                throw new \\RuntimeException('target_not_found');
+            }
+
+            $currentSuper = Authorization::isSuperAdmin($targetId);
+            if ($currentSuper && $roleKey !== 'super_admin' && count($activeSuperAdmins) <= 1) {
+                throw new \\RuntimeException('last_super_admin');
+            }
+
             $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $targetId]);
             $assign = $pdo->prepare(
                 'INSERT INTO user_roles (user_id, role_id)
@@ -142,7 +154,7 @@ final class AdminController
             );
             $assign->execute(['user_id' => $targetId, 'role_key' => $roleKey]);
             if ($assign->rowCount() !== 1) {
-                throw new \RuntimeException('Role does not exist.');
+                throw new \\RuntimeException('Role does not exist.');
             }
             Authorization::audit($actorId, 'user.role.changed', 'user', (string)$targetId, ['role' => $roleKey]);
             $pdo->commit();
@@ -150,10 +162,24 @@ final class AdminController
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
+            $reason = $e->getMessage();
+            if ($reason === 'actor_no_longer_super_admin') {
+                http_response_code(403);
+                exit('Only a super administrator may assign roles.');
+            }
+            if ($reason === 'target_not_found') {
+                http_response_code(404);
+                exit('User not found.');
+            }
+            if ($reason === 'last_super_admin') {
+                http_response_code(409);
+                exit('The last active super administrator cannot be demoted.');
+            }
             error_log('Role assignment failed: ' . $e->getMessage());
             http_response_code(500);
             exit('Role assignment failed.');
         }
+
         header('Location: /admin/users', true, 303);
     }
 
