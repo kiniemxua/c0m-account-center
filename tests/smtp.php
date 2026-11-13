@@ -12,6 +12,43 @@ spl_autoload_register(static function (string $class): void {
     }
 });
 
+// SMTP credentials must never be sent over an unencrypted connection.
+$plaintextAuthRejected = false;
+try {
+    $unsafeMailer = new App\\Core\\SmtpMailer([
+        'host' => '127.0.0.1',
+        'port' => 1,
+        'encryption' => 'none',
+        'username' => 'smtp-user',
+        'password' => 'smtp-secret',
+        'from_email' => 'noreply@example.test',
+    ]);
+    $unsafeMailer->send('member@example.test', 'Unsafe test', 'This must not be sent.');
+} catch (RuntimeException $e) {
+    $plaintextAuthRejected = $e->getMessage() === 'SMTP authentication requires TLS or implicit SSL.';
+}
+if (!$plaintextAuthRejected) {
+    throw new RuntimeException('SMTP authentication over plaintext must be rejected before opening a socket.');
+}
+
+$partialCredentialsRejected = false;
+try {
+    $partialMailer = new App\\Core\\SmtpMailer([
+        'host' => '127.0.0.1',
+        'port' => 1,
+        'encryption' => 'tls',
+        'username' => 'smtp-user',
+        'password' => '',
+        'from_email' => 'noreply@example.test',
+    ]);
+    $partialMailer->send('member@example.test', 'Invalid test', 'This must not be sent.');
+} catch (RuntimeException $e) {
+    $partialCredentialsRejected = $e->getMessage() === 'SMTP username and password must both be configured.';
+}
+if (!$partialCredentialsRejected) {
+    throw new RuntimeException('SMTP username/password must be configured as a pair.');
+}
+
 $base = sys_get_temp_dir() . '/c0m-smtp-' . bin2hex(random_bytes(5));
 $portFile = $base . '.port';
 $mailFile = $base . '.mail';
