@@ -94,8 +94,8 @@ foreach (['vi','en','xx'] as $locale) {
     $p = App\Core\EmailTemplates::passwordReset($locale, 'Lan', 'https://example.test/reset?token=def');
     $s = App\Core\EmailTemplates::passwordChanged($locale);
     localeCheck(str_contains($v['text'], 'https://example.test/verify?token=abc'), 'Verification URL must remain unchanged.');
-if ($locale === 'vi') localeCheck(str_contains($v['text'], 'Xin chào'), 'Vietnamese verification email must be localized.');
-if ($locale === 'en') localeCheck(str_contains($v['text'], 'Hello'), 'English verification email must be localized.');
+if ($locale === 'vi') localeCheck(str_contains($v['text'], 'Xin chào Lan'), 'Vietnamese verification email must preserve UTF-8 recipient names.');
+if ($locale === 'en') localeCheck(str_contains($v['text'], 'Hello Lan'), 'English verification email must preserve the recipient name.');
     if ($locale === 'xx') localeCheck(str_contains($v['text'], 'Xin chào'), 'Unsupported email locales must safely fall back to Vietnamese.');
     localeCheck(str_contains($p['text'], 'https://example.test/reset?token=def'), 'Reset URL must remain unchanged.');
     localeCheck($v['subject'] !== '' && $p['subject'] !== '' && $s['subject'] !== '', 'Localized email subjects must be present.');
