@@ -26,7 +26,7 @@ $controllerFiles = glob(BASE_PATH . '/app/Controllers/*.php') ?: [];
 foreach ($controllerFiles as $controllerFile) {
     $controllerSource = file_get_contents($controllerFile);
     localeCheck($controllerSource !== false, 'Controller source must be readable.');
-    localeCheck(!preg_match('~\\$(?:error|message)\\s*=\\s*["\\x27]~', $controllerSource), 'Controllers must assign translated messages, not hardcoded interface copy: ' . basename($controllerFile));
+    localeCheck(!preg_match('~\\$(?:error|message)\\s*=\\s*["\\x27]~', $controllerSource) && !preg_match('~exit\\s*\\(\\s*["\\x27]~', $controllerSource), 'Controllers must assign translated messages, not hardcoded interface copy: ' . basename($controllerFile));
 }
 $sourceFiles = array_merge(
     glob(BASE_PATH . '/app/Views/*.php') ?: [],

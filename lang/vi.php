@@ -175,4 +175,5 @@ return [
 "User administration" => "Quản lý người dùng",
 "No members found." => "Chưa tìm thấy thành viên nào.",
 "You do not have permission to access this resource." => "Bạn không có quyền truy cập chức năng này.",
+"Authentication required." => "Yêu cầu đăng nhập để tiếp tục.",
 ];

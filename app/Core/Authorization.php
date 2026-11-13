@@ -37,7 +37,7 @@ final class Authorization
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId < 1) {
             http_response_code(401);
-            exit('Authentication required.');
+            exit(\App\Core\t('Authentication required.'));
         }
         if (!self::hasPermission($userId, $permission)) {
             http_response_code(403);

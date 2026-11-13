@@ -175,4 +175,5 @@ return [
 "User administration" => "User administration",
 "No members found." => "No members found.",
 "You do not have permission to access this resource." => "You do not have permission to access this resource.",
+"Authentication required." => "Authentication is required to continue.",
 ];
