@@ -121,24 +121,34 @@ final class AccountController
         }
 
         $pdo = Database::connection();
-        $lookup = $pdo->prepare('SELECT email, password_hash FROM users WHERE id = :id AND status = \'active\' LIMIT 1');
-        $lookup->execute(['id' => $userId]);
-        $user = $lookup->fetch();
-        if (!$user || !password_verify($current, $user['password_hash'])) {
-            http_response_code(422);
-            $error = 'The current password is incorrect.';
-            $this->renderWithInput($userId, $error);
-            return;
-        }
-        if (password_verify($new, $user['password_hash'])) {
-            http_response_code(422);
-            $error = 'Choose a password different from your current password.';
+        if ($this->passwordChangeRateLimited($pdo, $userId)) {
+            http_response_code(429);
+            header('Retry-After: 900');
+            $error = 'Too many password-change attempts. Please wait and try again.';
             $this->renderWithInput($userId, $error);
             return;
         }
 
         $pdo->beginTransaction();
         try {
+            $lookup = $pdo->prepare('SELECT email, password_hash FROM users WHERE id = :id AND status = \'active\' FOR UPDATE');
+            $lookup->execute(['id' => $userId]);
+            $user = $lookup->fetch();
+            if (!$user || !password_verify($current, $user['password_hash'])) {
+                $pdo->rollBack();
+                http_response_code(422);
+                $error = 'The current password is incorrect.';
+                $this->renderWithInput($userId, $error);
+                return;
+            }
+            if (password_verify($new, $user['password_hash'])) {
+                $pdo->rollBack();
+                http_response_code(422);
+                $error = 'Choose a password different from your current password.';
+                $this->renderWithInput($userId, $error);
+                return;
+            }
+
             $update = $pdo->prepare('UPDATE users SET password_hash = :hash, updated_at = NOW() WHERE id = :id AND status = \'active\'');
             $update->execute(['hash' => password_hash($new, PASSWORD_DEFAULT), 'id' => $userId]);
             if ($update->rowCount() !== 1) {
@@ -176,6 +186,41 @@ final class AccountController
         }
         session_destroy();
         header('Location: /login?password_changed=1', true, 303);
+    }
+
+    private function passwordChangeRateLimited(PDO $pdo, int $userId): bool
+    {
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        $packedIp = $ip !== false ? inet_pton($ip) : null;
+        $identifierHash = hash('sha256', 'password-change:' . $userId);
+        $insert = $pdo->prepare(
+            "INSERT INTO auth_attempts (action, ip_address, identifier_hash)
+             VALUES ('password_change', :ip, :identifier)"
+        );
+        $insert->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $insert->bindValue(':identifier', $identifierHash);
+        $insert->execute();
+
+        $byIdentifier = $pdo->prepare(
+            "SELECT COUNT(*) FROM auth_attempts
+             WHERE action = 'password_change' AND identifier_hash = :identifier
+               AND created_at >= (NOW() - INTERVAL 15 MINUTE)"
+        );
+        $byIdentifier->execute(['identifier' => $identifierHash]);
+        if ((int)$byIdentifier->fetchColumn() > 5) {
+            return true;
+        }
+        if ($packedIp === null) {
+            return false;
+        }
+        $byIp = $pdo->prepare(
+            "SELECT COUNT(*) FROM auth_attempts
+             WHERE action = 'password_change' AND ip_address = :ip
+               AND created_at >= (NOW() - INTERVAL 15 MINUTE)"
+        );
+        $byIp->bindValue(':ip', $packedIp, PDO::PARAM_LOB);
+        $byIp->execute();
+        return (int)$byIp->fetchColumn() > 20;
     }
 
     private function renderWithInput(int $userId, string $error): void
