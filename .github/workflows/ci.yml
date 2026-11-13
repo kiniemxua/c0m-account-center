@@ -10,20 +10,33 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: test (PHP ${{ matrix.php-version }} / ${{ matrix.database-image }})
     strategy:
       fail-fast: false
       matrix:
-        php-version: ['8.2', '8.3', '8.4']
+        include:
+          - php-version: '8.2'
+            database-image: mariadb:11.4
+          - php-version: '8.3'
+            database-image: mariadb:11.4
+          - php-version: '8.4'
+            database-image: mariadb:11.4
+          - php-version: '8.4'
+            database-image: mysql:8.4
     services:
       mariadb:
-        image: mariadb:11.4
+        image: ${{ matrix.database-image }}
         env:
           MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_ROOT_HOST: '%'
           MARIADB_DATABASE: c0m_test
+          MYSQL_ROOT_PASSWORD: ci-root-password
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: c0m_test
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci-root-password"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -49,7 +62,7 @@ jobs:
         run: php tests/smtp.php
       - name: Installer failure and recovery tests
         run: php tests/installer.php
-      - name: MariaDB integration tests
+      - name: MariaDB/MySQL integration tests
         run: php tests/integration.php
       - name: Super Admin concurrency integration test
         run: php tests/rbac-concurrency.php
