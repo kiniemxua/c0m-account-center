@@ -5,8 +5,27 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  lint:
+  test:
     runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_DATABASE: c0m_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3306
+      DB_NAME: c0m_test
+      DB_USER: root
+      DB_PASSWORD: ci-root-password
     steps:
       - uses: actions/checkout@v4
       - name: Set up PHP
@@ -15,6 +34,9 @@ jobs:
           php-version: '8.2'
           extensions: pdo, pdo_mysql
           coverage: none
-      - name: Syntax check
-        run: |
-          find app public config -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: PHP syntax validation
+        run: find app public config tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: Unit tests
+        run: php tests/unit.php
+      - name: MariaDB integration tests
+        run: php tests/integration.php
