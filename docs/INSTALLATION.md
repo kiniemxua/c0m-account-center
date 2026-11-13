@@ -12,7 +12,7 @@
 1. Upload the repository so app/, config/, database/, storage/ and public/ are siblings.
 2. Set the cPanel domain document root to public/. Do not expose the repository root.
 3. Ensure config/ and storage/ are outside the public document root. Make them writable by PHP only during setup; use restrictive permissions (directories 0750, config 0640 where supported).
-4. Open https://your-domain.example/installer/ over HTTPS.
+4. If HTTPS terminates at a reverse proxy (for example Cloudflare), create config/app.php first and list only the immediate proxy IPs under trusted_proxies; this is required so the installer session cookie also receives Secure. Then open https://your-domain.example/installer/ over HTTPS.
 5. Enter the cPanel database credentials and create the initial administrator.
 6. Verify the installer reports that installation is locked. Keep storage/install.lock and deny public access to /installer/ using cPanel File Manager or access rules.
 7. Confirm login works over HTTPS, then remove write permission from config/.
