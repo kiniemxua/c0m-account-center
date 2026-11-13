@@ -109,7 +109,7 @@ try {
         usleep(50000);
     } while (microtime(true) < $deadline);
 
-    httpCheck($login['status'] === 200, 'The actual HTTP router must render the login page.');
+    httpCheck($login['status'] === 200, 'The actual HTTP router must render the login page (status ' . $login['status'] . ', response ' . substr(strip_tags(preg_replace('/value="[a-f0-9]{64}"/', 'value="[redacted]"', $login['body'])), 0, 180) . ').');
     httpCheck(str_contains(implode("\n", $login['headers']), 'X-Content-Type-Options: nosniff'), 'HTTP security headers must be emitted by bootstrap.');
 
     $cookie = '';
