@@ -28,4 +28,4 @@ Use `\\App\\Core\\t('English source phrase', ['name' => $value])` in PHP views f
 
 ## Tests
 
-Run `php tests/localization.php` for catalog parity, UTF-8, fallback, placeholders and email copy. The integration suite applies migrations against MariaDB/MySQL, checks the `vi` default, re-runs the migration to verify existing preferences survive, and checks that the authenticated account preference overrides a guest/session choice.
+Run `php tests/localization.php` for catalog parity, UTF-8, fallback, placeholders and email copy. The integration suite applies migrations against MariaDB/MySQL, checks the `vi` default, re-runs the migration to verify existing preferences survive, and checks that the authenticated account preference overrides a guest/session choice. The admin audit-log screen localizes known event labels but leaves metadata, IDs and other recorded data unchanged.

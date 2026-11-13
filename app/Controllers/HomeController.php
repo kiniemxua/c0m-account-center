@@ -16,6 +16,7 @@ final class HomeController
         $user = $stmt->fetch();
         if (!$user) { $_SESSION = []; header('Location: /login', true, 303); return; }
         $canViewAdmin = Authorization::hasPermission((int)$user['id'], 'users.view');
+        $canViewAudit = Authorization::hasPermission((int)$user['id'], 'audit.view');
         require BASE_PATH . '/app/Views/dashboard.php';
     }
 }

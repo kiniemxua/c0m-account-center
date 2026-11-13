@@ -27,7 +27,7 @@ The repository contains an account/authentication foundation:
 - Password change with current-password verification, throttling, session revocation and email notification.
 - Application and installer requests fail closed unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS; forwarded headers from untrusted clients are ignored.
 
-**Not production-ready.** The current automated HTTP suite exercises the real PHP router and key access-control/CSRF paths, but does not yet cover every end-to-end account flow. Concurrent last-Super-Admin controller tests, filesystem-permission installer injection, full SMTP TLS/auth failure fixtures, independent security review and broader browser-level UI coverage remain outstanding. The bilingual Vietnamese/English localization foundation is implemented in this branch and remains subject to the Phase 3 CI and review gate. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
+**Not production-ready.** The current automated HTTP suite exercises the real PHP router and key access-control/CSRF paths, but does not yet cover every end-to-end account flow. Concurrent last-Super-Admin controller tests, filesystem-permission installer injection, full SMTP TLS/auth failure fixtures, independent security review and broader browser-level UI coverage remain outstanding. Vietnamese/English localization is being implemented on the Phase 3 branch; it is not accepted or production-ready until the complete CI and review gate passes. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
 
 ## cPanel installation
 

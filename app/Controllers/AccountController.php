@@ -8,6 +8,7 @@ use App\Core\Csrf;
 use App\Core\Database;
 use App\Core\EmailTemplates;
 use App\Core\MailService;
+use App\Core\Localization;
 use PDO;
 use Throwable;
 

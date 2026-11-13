@@ -174,4 +174,5 @@ return [
 "Your digital home" => "Ngôi nhà số của bạn",
 "User administration" => "Quản lý người dùng",
 "No members found." => "Chưa tìm thấy thành viên nào.",
+"You do not have permission to access this resource." => "Bạn không có quyền truy cập chức năng này.",
 ];

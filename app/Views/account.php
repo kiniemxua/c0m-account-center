@@ -11,7 +11,7 @@
 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>">
 <label><?= \App\Core\t("Email address") ?></label><input type="email" value="<?= htmlspecialchars($account['email'], ENT_QUOTES, 'UTF-8') ?>" disabled>
 <label><?= \App\Core\t("Display name") ?></label><input name="display_name" maxlength="100" value="<?= htmlspecialchars($account['display_name'] ?? '', ENT_QUOTES, 'UTF-8') ?>" required>
-<label><?= \App\Core\t("Username") ?></label><input name="username" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}" value="<?= htmlspecialchars($account['username'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="optional">
+<label><?= \App\Core\t("Username") ?></label><input name="username" maxlength="30" pattern="[a-zA-Z0-9_]{3,30}" value="<?= htmlspecialchars($account['username'] ?? '', ENT_QUOTES, 'UTF-8') ?>" placeholder="<?= htmlspecialchars(\App\\Core\\t('optional'), ENT_QUOTES, 'UTF-8') ?>">
 <label><?= \App\Core\t("Language") ?></label><select name="language"><option value="vi" <?= $account['language'] === 'vi' ? 'selected' : '' ?>><?= \App\Core\t('Vietnamese') ?></option><option value="en" <?= $account['language'] === 'en' ? 'selected' : '' ?>><?= \App\Core\t('English') ?></option></select>
 <label><?= \App\Core\t("Timezone") ?></label><select name="timezone"><?php foreach (['Asia/Ho_Chi_Minh','UTC','Asia/Singapore','America/Los_Angeles','Europe/London'] as $zone): ?><option value="<?= $zone ?>" <?= $account['timezone'] === $zone ? 'selected' : '' ?>><?= $zone ?></option><?php endforeach; ?></select>
 <button class="button full" type="submit"><?= \App\Core\t("Save profile") ?></button></form></article>

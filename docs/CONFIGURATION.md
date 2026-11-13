@@ -2,7 +2,7 @@
 
 ## Language defaults and preferences
 
-Account Center supports Vietnamese (vi) and English (en) without external services.
+Account Center supports Vietnamese (vi) and English (en) without external services. The existing audit log is available at `/admin/audit` to accounts with the `audit.view` permission.
 
 - The system fallback is vi.
 - New profile rows default to vi through database/migrations/003_account_preferences.sql.

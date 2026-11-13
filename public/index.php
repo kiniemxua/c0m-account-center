@@ -34,6 +34,7 @@ $router->get('/admin/users', [AdminController::class, 'users']);
 $router->post('/admin/users/status', [AdminController::class, 'updateStatus']);
 $router->post('/admin/users/role', [AdminController::class, 'assignRole']);
 $router->get('/admin/settings', [AdminController::class, 'settings']);
+$router->get('/admin/audit', [AdminController::class, 'audit']);
 $router->post('/admin/settings', [AdminController::class, 'settings']);
 $router->post('/logout', [AuthController::class, 'logout']);
 $router->get('/dashboard', [HomeController::class, 'dashboard']);

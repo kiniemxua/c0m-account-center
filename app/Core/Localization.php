@@ -23,6 +23,8 @@ final class Localization
                     $locale = $stored;
                     $_SESSION['locale'] = $stored;
                     self::writeGuestCookie($stored);
+                } else {
+                    $locale = self::valid($_SESSION['locale'] ?? null) ?? self::valid($_COOKIE['c0m_lang'] ?? null) ?? 'vi';
                 }
             } catch (\Throwable $e) {
                 error_log('Locale preference lookup failed (' . get_class($e) . ', code ' . $e->getCode() . ').');

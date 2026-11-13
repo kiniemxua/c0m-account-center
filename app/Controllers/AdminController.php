@@ -29,6 +29,7 @@ final class AdminController
         unset($user);
         $canManage = Authorization::hasPermission((int)$_SESSION['user_id'], 'users.manage');
         $canAssignRoles = Authorization::isSuperAdmin((int)$_SESSION['user_id']);
+        $canViewAudit = Authorization::hasPermission((int)$_SESSION['user_id'], 'audit.view');
         require BASE_PATH . '/app/Views/admin-users.php';
     }
 

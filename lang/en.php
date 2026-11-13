@@ -174,4 +174,5 @@ return [
 "Your digital home" => "Your digital home",
 "User administration" => "User administration",
 "No members found." => "No members found.",
+"You do not have permission to access this resource." => "You do not have permission to access this resource.",
 ];
