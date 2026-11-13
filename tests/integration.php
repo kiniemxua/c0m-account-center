@@ -42,6 +42,10 @@ $migration = file_get_contents(BASE_PATH . '/database/migrations/001_core.sql');
 assertIntegration($migration !== false, 'Core migration must exist.');
 $pdo->exec($migration);
 $pdo->exec($migration); // MySQL DDL is not transactional; installer retries must be idempotent.
+$authMigration = file_get_contents(BASE_PATH . '/database/migrations/002_auth_foundation.sql');
+assertIntegration($authMigration !== false, 'Auth migration must exist.');
+$pdo->exec($authMigration);
+$pdo->exec($authMigration); // RBAC and auth token migration must also be repeatable.
 
 $email = 'ci-' . bin2hex(random_bytes(6)) . '@example.test';
 $insert = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
@@ -73,5 +77,60 @@ try {
     $delete = $pdo->prepare('DELETE FROM users WHERE id = :id');
     $delete->execute(['id' => $userId]);
 }
+
+
+// Exercise registration, hashed verification token, activation and single-use semantics.
+$pdo->prepare("UPDATE app_settings SET setting_value = '1' WHERE setting_key = 'registration_enabled'")->execute();
+file_put_contents(BASE_PATH . '/config/app.php', "<?php return ['base_url' => 'https://accounts.example.test'];");
+file_put_contents(BASE_PATH . '/config/mail.php', "<?php return ['mode' => 'development_log'];");
+$registrationEmail = 'signup-' . bin2hex(random_bytes(6)) . '@example.test';
+$controller = new App\Controllers\AuthController();
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+session_start();
+$_SESSION = [];
+$_POST = [
+    '_csrf' => App\Core\Csrf::token(),
+    'email' => $registrationEmail,
+    'display_name' => 'CI Registration',
+    'password' => 'StrongPassword42',
+];
+ob_start();
+$controller->register();
+ob_end_clean();
+
+$lookup = $pdo->prepare('SELECT id, status, email_verified_at FROM users WHERE email = :email');
+$lookup->execute(['email' => $registrationEmail]);
+$registered = $lookup->fetch();
+assertIntegration($registered && $registered['status'] === 'pending', 'Registration must create a pending account.');
+$mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
+preg_match('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $matches);
+assertIntegration(isset($matches[1]), 'Registration must send a verification link through the configured mail provider.');
+$rawToken = $matches[1];
+$tokenQuery = $pdo->prepare('SELECT token_hash FROM auth_tokens WHERE user_id = :id AND token_type = "email_verification"');
+$tokenQuery->execute(['id' => (int)$registered['id']]);
+$storedToken = $tokenQuery->fetchColumn();
+assertIntegration($storedToken === hash('sha256', $rawToken), 'Only a SHA-256 hash of the verification token may be stored.');
+
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $rawToken];
+ob_start();
+$controller->verifyEmail();
+ob_end_clean();
+$lookup->execute(['email' => $registrationEmail]);
+$activated = $lookup->fetch();
+assertIntegration($activated && $activated['status'] === 'active' && $activated['email_verified_at'] !== null, 'A valid verification token must activate the account.');
+
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $rawToken];
+ob_start();
+$controller->verifyEmail();
+ob_end_clean();
+$tokenQuery->execute(['id' => (int)$registered['id']]);
+$tokenRow = $pdo->prepare('SELECT used_at FROM auth_tokens WHERE token_hash = :hash');
+$tokenRow->execute(['hash' => hash('sha256', $rawToken)]);
+assertIntegration($tokenRow->fetchColumn() !== null, 'A verification token must remain consumed after use.');
+
+$pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$registered['id']]);
+@unlink(BASE_PATH . '/config/app.php');
+@unlink(BASE_PATH . '/config/mail.php');
+@unlink(BASE_PATH . '/storage/mail.log');
 
 echo "MariaDB integration tests passed.\n";
