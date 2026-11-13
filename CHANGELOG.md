@@ -8,6 +8,7 @@
 - Reject SMTP AUTH over plaintext and require username/password to be configured together.
 - Add server-side session inventory, revoke-one and revoke-other-device flows.
 - Add database-backed Super Admin, Admin and Member roles, permission checks and admin controls.
+- Serialize privileged role/status changes, audit them in the same transaction and protect the final active super administrator.
 - Add registration setting management and admin audit events.
 - Expand MariaDB integration tests for token expiry/replay, login session fixation and identifier throttling.
 - Add SMTP protocol tests and update cPanel/mail/security documentation.
