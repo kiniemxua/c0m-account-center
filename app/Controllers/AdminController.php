@@ -134,17 +134,17 @@ final class AdminController
             )->fetchAll(PDO::FETCH_COLUMN);
 
             if (!Authorization::isSuperAdmin($actorId)) {
-                throw new \\RuntimeException('actor_no_longer_super_admin');
+                throw new \RuntimeException('actor_no_longer_super_admin');
             }
             $target = $pdo->prepare('SELECT id FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
             if ($target->fetchColumn() === false) {
-                throw new \\RuntimeException('target_not_found');
+                throw new \RuntimeException('target_not_found');
             }
 
             $currentSuper = Authorization::isSuperAdmin($targetId);
             if ($currentSuper && $roleKey !== 'super_admin' && count($activeSuperAdmins) <= 1) {
-                throw new \\RuntimeException('last_super_admin');
+                throw new \RuntimeException('last_super_admin');
             }
 
             $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $targetId]);
@@ -154,7 +154,7 @@ final class AdminController
             );
             $assign->execute(['user_id' => $targetId, 'role_key' => $roleKey]);
             if ($assign->rowCount() !== 1) {
-                throw new \\RuntimeException('Role does not exist.');
+                throw new \RuntimeException('Role does not exist.');
             }
             Authorization::audit($actorId, 'user.role.changed', 'user', (string)$targetId, ['role' => $roleKey]);
             $pdo->commit();
