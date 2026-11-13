@@ -34,4 +34,7 @@ $router->get('/admin/settings', [AdminController::class, 'settings']);
 $router->post('/admin/settings', [AdminController::class, 'settings']);
 $router->post('/logout', [AuthController::class, 'logout']);
 $router->get('/dashboard', [HomeController::class, 'dashboard']);
+$router->get('/account', [AccountController::class, 'show']);
+$router->post('/account/profile', [AccountController::class, 'updateProfile']);
+$router->post('/account/password', [AccountController::class, 'changePassword']);
 $router->dispatch($_SERVER['REQUEST_METHOD'], parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH) ?: '/');
