@@ -164,8 +164,9 @@ $_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' 
 ob_start();
 $controller->resetPassword();
 ob_end_clean();
-$lookup->execute(['email' => $registrationEmail]);
-$afterReset = $lookup->fetch();
+$passwordLookup = $pdo->prepare('SELECT password_hash FROM users WHERE email = :email');
+$passwordLookup->execute(['email' => $registrationEmail]);
+$afterReset = $passwordLookup->fetch();
 assertIntegration(password_verify('NewStrongPassword84', $afterReset['password_hash'] ?? ''), 'Password reset must replace the password hash.');
 $sessionCheck = $pdo->prepare('SELECT revoked_at FROM sessions WHERE id = :id');
 $sessionCheck->execute(['id' => $sessionHash]);
@@ -176,8 +177,8 @@ $_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' 
 ob_start();
 $controller->resetPassword();
 ob_end_clean();
-$lookup->execute(['email' => $registrationEmail]);
-$afterReplay = $lookup->fetch();
+$passwordLookup->execute(['email' => $registrationEmail]);
+$afterReplay = $passwordLookup->fetch();
 assertIntegration(password_verify('NewStrongPassword84', $afterReplay['password_hash'] ?? ''), 'A reused reset token must not change the password.');
 
 $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$registered['id']]);
