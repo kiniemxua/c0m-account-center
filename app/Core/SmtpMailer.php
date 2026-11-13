@@ -33,7 +33,8 @@ final class SmtpMailer implements MailProviderInterface
         $timeout = max(5, min(30, (int)($config['timeout'] ?? 15)));
 
         if ($host === '' || $port < 1 || $port > 65535 || !filter_var($from, FILTER_VALIDATE_EMAIL)
-            || preg_match('/[\r\n]/', $host . $username . $fromName)
+            || $tlsPeerName === '' || preg_match('/[\r\n]/', $host . $username . $fromName . $tlsPeerName)
+            || ($caFile !== '' && (!is_file($caFile) || !is_readable($caFile)))
             || !in_array($encryption, ['tls', 'ssl', 'none'], true)) {
             throw new RuntimeException('SMTP configuration is invalid.');
         }
