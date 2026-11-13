@@ -23,6 +23,10 @@ final class AdminController
              GROUP BY u.id ORDER BY u.created_at DESC LIMIT 200'
         );
         $users = $stmt->fetchAll();
+        foreach ($users as &$user) {
+            $user['role_keys'] = $user['roles'] !== null && $user['roles'] !== '' ? explode(', ', $user['roles']) : [];
+        }
+        unset($user);
         $canManage = Authorization::hasPermission((int)$_SESSION['user_id'], 'users.manage');
         $canAssignRoles = Authorization::isSuperAdmin((int)$_SESSION['user_id']);
         require BASE_PATH . '/app/Views/admin-users.php';
