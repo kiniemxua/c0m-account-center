@@ -9,7 +9,7 @@ The application has no framework or external translation dependency. UTF-8 PHP a
 
 ## Locale resolution
 
-1. Authenticated users: `user_profiles.language` is authoritative.
+1. Authenticated users: a valid `user_profiles.language` is authoritative; if the profile or value is missing/invalid, use `vi` rather than a stale guest cookie.
 2. Guests: the session locale, then the `c0m_lang` cookie.
 3. Fallback: `vi`.
 
