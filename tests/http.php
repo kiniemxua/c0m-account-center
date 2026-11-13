@@ -12,7 +12,9 @@ function httpCheck(bool $condition, string $message): void
 
 $dbConfigPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
-if (is_file($dbConfigPath) || is_file($appConfigPath)) {
+$mailConfigPath = BASE_PATH . '/config/mail.php';
+$mailLogPath = BASE_PATH . '/storage/mail.log';
+if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath)) {
     throw new RuntimeException('HTTP test refuses to overwrite an existing database config.');
 }
 $dbConfig = [
@@ -29,9 +31,14 @@ $configSource = "<?php\ndeclare(strict_types=1);\nreturn " . var_export($dbConfi
 if (file_put_contents($dbConfigPath, $configSource, LOCK_EX) === false) {
     throw new RuntimeException('Could not create temporary HTTP test configuration.');
 }
-if (file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) === false) {
+if (file_put_contents($appConfigPath, "<?php return ['base_url' => 'https://accounts.example.test', 'trusted_proxies' => ['127.0.0.1']];", LOCK_EX) === false) {
     @unlink($dbConfigPath);
     throw new RuntimeException('Could not create temporary trusted-proxy configuration.');
+}
+if (file_put_contents($mailConfigPath, "<?php return ['mode' => 'development_log'];", LOCK_EX) === false) {
+    @unlink($dbConfigPath);
+    @unlink($appConfigPath);
+    throw new RuntimeException('Could not create temporary development mail configuration.');
 }
 
 $pdo = new PDO(
@@ -129,6 +136,101 @@ try {
     }
     httpCheck($csrf !== '', 'The login form must expose its session-bound CSRF token.');
 
+    // Exercise registration, email verification, password reset and replay through the real router.
+    $flowEmail = 'http-flow-' . bin2hex(random_bytes(5)) . '@example.test';
+    $flowPassword = 'HttpFlowInitialPass42';
+    $registerPage = $request('GET', '/register', '', $cookie);
+    httpCheck($registerPage['status'] === 200, 'The registration form must render through HTTP.');
+    $registerCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $registerPage['body'], $match)) {
+        $registerCsrf = $match[1];
+    }
+    httpCheck($registerCsrf !== '', 'Registration form must include CSRF protection.');
+    $registerResponse = $request('POST', '/register', http_build_query([
+        '_csrf' => $registerCsrf,
+        'display_name' => 'HTTP Flow Member',
+        'email' => $flowEmail,
+        'password' => $flowPassword,
+    ]), $cookie);
+    httpCheck($registerResponse['status'] === 200 && str_contains($registerResponse['body'], 'verification email'), 'Registration must complete through the HTTP router.');
+
+    $mailLog = is_file($mailLogPath) ? (string)file_get_contents($mailLogPath) : '';
+    httpCheck(preg_match('/verify-email\\?token=([a-f0-9]{64})/', $mailLog, $verifyMatch) === 1, 'Registration must send a one-time verification link through the mail adapter.');
+    $verifyToken = $verifyMatch[1];
+    $verifyPage = $request('GET', '/verify-email?token=' . rawurlencode($verifyToken), '', $cookie);
+    httpCheck($verifyPage['status'] === 200 && str_contains($verifyPage['body'], 'Confirm your email'), 'The verification token must render a confirmation page.');
+    $verifyCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $verifyPage['body'], $match)) {
+        $verifyCsrf = $match[1];
+    }
+    $verified = $request('POST', '/verify-email', http_build_query(['_csrf' => $verifyCsrf, 'token' => $verifyToken]), $cookie);
+    httpCheck($verified['status'] === 200 && str_contains($verified['body'], 'Email verified'), 'Email verification must activate the account through HTTP.');
+    $verifyReplay = $request('POST', '/verify-email', http_build_query(['_csrf' => $verifyCsrf, 'token' => $verifyToken]), $cookie);
+    httpCheck(str_contains($verifyReplay['body'], 'Link unavailable'), 'Email verification token replay must be rejected over HTTP.');
+
+    $forgotPage = $request('GET', '/forgot-password', '', $cookie);
+    $forgotCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $forgotPage['body'], $match)) {
+        $forgotCsrf = $match[1];
+    }
+    $forgotResponse = $request('POST', '/forgot-password', http_build_query(['_csrf' => $forgotCsrf, 'email' => $flowEmail]), $cookie);
+    httpCheck($forgotResponse['status'] === 200 && str_contains($forgotResponse['body'], 'If an active account matches'), 'Password recovery must return the generic HTTP response.');
+    $mailLog = (string)file_get_contents($mailLogPath);
+    httpCheck(preg_match('/reset-password\\?token=([a-f0-9]{64})/', $mailLog, $resetMatch) === 1, 'Password recovery must send a one-time reset link through the mail adapter.');
+    $resetToken = $resetMatch[1];
+    $resetPage = $request('GET', '/reset-password?token=' . rawurlencode($resetToken), '', $cookie);
+    httpCheck($resetPage['status'] === 200 && str_contains($resetPage['body'], 'Choose a new password'), 'The reset token must render a password form.');
+    $resetCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $resetPage['body'], $match)) {
+        $resetCsrf = $match[1];
+    }
+    $newFlowPassword = 'HttpFlowUpdatedPass84';
+    $resetResponse = $request('POST', '/reset-password', http_build_query([
+        '_csrf' => $resetCsrf,
+        'token' => $resetToken,
+        'password' => $newFlowPassword,
+    ]), $cookie);
+    httpCheck($resetResponse['status'] === 200, 'Password reset must complete through the HTTP router.');
+    $flowUser = $pdo->prepare('SELECT status, password_hash FROM users WHERE email = :email');
+    $flowUser->execute(['email' => $flowEmail]);
+    $flowUserRow = $flowUser->fetch();
+    httpCheck($flowUserRow && $flowUserRow['status'] === 'active' && password_verify($newFlowPassword, $flowUserRow['password_hash']), 'HTTP password reset must persist the new password for the verified account.');
+    $resetReplay = $request('POST', '/reset-password', http_build_query([
+        '_csrf' => $resetCsrf,
+        'token' => $resetToken,
+        'password' => 'AnotherUpdatedPass85',
+    ]), $cookie);
+    httpCheck($resetReplay['status'] === 200, 'Password reset replay must return a safe result page.');
+    $flowUser->execute(['email' => $flowEmail]);
+    httpCheck(password_verify($newFlowPassword, $flowUser->fetch()['password_hash']), 'A consumed reset token must not change the password again.');
+
+    $flowLoginPage = $request('GET', '/login', '', $cookie);
+    $flowLoginCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $flowLoginPage['body'], $match)) {
+        $flowLoginCsrf = $match[1];
+    }
+    $flowLogin = $request('POST', '/login', http_build_query([
+        '_csrf' => $flowLoginCsrf,
+        'email' => $flowEmail,
+        'password' => $newFlowPassword,
+    ]), $cookie);
+    httpCheck($flowLogin['status'] === 303, 'The reset password must authenticate successfully through HTTP.');
+    $flowAuthCookie = '';
+    foreach ($flowLogin['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_session=') === 0) {
+            $flowAuthCookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    httpCheck($flowAuthCookie !== '', 'HTTP login after password reset must issue a rotated session cookie.');
+    $flowDashboard = $request('GET', '/dashboard', '', $flowAuthCookie);
+    httpCheck($flowDashboard['status'] === 200 && str_contains($flowDashboard['body'], 'HTTP Flow Member'), 'Verified account must reach the dashboard after reset and login.');
+    $flowLogoutCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $flowDashboard['body'], $match)) {
+        $flowLogoutCsrf = $match[1];
+    }
+    $flowLogout = $request('POST', '/logout', http_build_query(['_csrf' => $flowLogoutCsrf]), $flowAuthCookie);
+    httpCheck($flowLogout['status'] === 303, 'The HTTP flow account must be able to log out.');
+
     $badCsrf = $request('POST', '/login', 'email=invalid%40example.test&password=invalid', $cookie);
     httpCheck($badCsrf['status'] === 419, 'The HTTP login endpoint must reject a missing CSRF token.');
 
@@ -188,5 +290,8 @@ try {
     proc_close($process);
     @unlink($dbConfigPath);
     @unlink($appConfigPath);
+    @unlink($mailConfigPath);
+    @unlink($mailLogPath);
+    $pdo->prepare('DELETE FROM users WHERE email = :email')->execute(['email' => $flowEmail]);
     $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
 }
