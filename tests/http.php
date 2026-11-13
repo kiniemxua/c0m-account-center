@@ -144,6 +144,8 @@ try {
         'return_to' => '/login',
     ]), $cookie);
     httpCheck($guestLanguage['status'] === 303, 'Guest language switching must redirect safely.');
+    $missingLanguageCsrf = $request('POST', '/language', http_build_query(['language' => 'en']), $cookie);
+    httpCheck($missingLanguageCsrf['status'] === 419, 'Language changes must reject missing CSRF tokens.');
     $invalidLanguage = $request('POST', '/language', http_build_query([
         '_csrf' => $csrf, 'language' => '../en.php', 'return_to' => '/login',
     ]), $cookie);
@@ -156,6 +158,10 @@ try {
         '_csrf' => $csrf, 'language' => 'en', 'return_to' => '/%2f%2fevil.example/path',
     ]), $cookie);
     httpCheck($encodedUnsafeRedirect['status'] === 303 && in_array('Location: /', $encodedUnsafeRedirect['headers'], true), 'Encoded protocol-relative return targets must not be used.');
+    $malformedRedirect = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf, 'language' => 'en', 'return_to' => 'http://[::1',
+    ]), $cookie);
+    httpCheck($malformedRedirect['status'] === 303 && in_array('Location: /', $malformedRedirect['headers'], true), 'Malformed redirect targets must safely fall back without a server error.');
     $localeCookie = '';
     foreach ($guestLanguage['headers'] as $header) {
         if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
@@ -163,6 +169,11 @@ try {
         }
     }
     httpCheck($localeCookie === 'c0m_lang=en', 'Guest language selection must persist in the locale cookie.');
+    $localeCookieHeader = '';
+    foreach ($guestLanguage['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) $localeCookieHeader = $header;
+    }
+    httpCheck(stripos($localeCookieHeader, 'httponly') !== false && stripos($localeCookieHeader, 'samesite=Lax') !== false && stripos($localeCookieHeader, 'secure') !== false, 'Locale cookies must be HttpOnly, SameSite=Lax and Secure behind the trusted HTTPS proxy.');
     $cookie .= '; ' . $localeCookie;
     $englishLogin = $request('GET', '/login', '', $cookie);
     httpCheck($englishLogin['status'] === 200 && str_contains($englishLogin['body'], '<html lang="en">'), 'The guest language must persist across application pages.');
