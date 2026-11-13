@@ -15,7 +15,7 @@
 - Password recovery with hashed, expiring, single-use reset tokens and revocation of all account sessions.
 - Member password change with current-password verification under a row lock, independent attempt throttling, session/token revocation and post-change email notification.
 - Member profile update with validation, unique usernames, language/timezone preferences and audit logging.
-- Database-backed Super Admin, Admin and Member RBAC. Admin controllers enforce permissions server-side.
+- Database-backed Super Admin, Admin and Member RBAC. Admin controllers enforce permissions server-side; member administration preserves and edits multiple selected roles rather than silently collapsing them to one.
 - Privileged status/role changes use transactions and row locks to protect the final active Super Admin; audit events commit with the change.
 - External SMTP provider and development-log provider. SMTP AUTH is rejected unless TLS or implicit SSL is configured; TLS peer and hostname verification are enabled by the stream context.
 - Installer writes config and install lock atomically, refuses to overwrite existing configuration, can recover when config was written but the lock was not, and permits retries after partial repeatable migrations.
