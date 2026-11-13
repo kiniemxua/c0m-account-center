@@ -236,6 +236,20 @@ try {
     $flowLogout = $request('POST', '/logout', http_build_query(['_csrf' => $flowLogoutCsrf]), $flowAuthCookie);
     httpCheck($flowLogout['status'] === 303, 'The HTTP flow account must be able to log out.');
 
+    // Login regenerated and logout destroyed the prior session; start a fresh CSRF session for the member fixture.
+    $login = $request('GET', '/login');
+    $cookie = '';
+    foreach ($login['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_session=') === 0) {
+            $cookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    $csrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $login['body'], $match)) {
+        $csrf = $match[1];
+    }
+    httpCheck($cookie !== '' && $csrf !== '', 'A fresh login form must issue a new session and CSRF token after logout.');
+
     $badCsrf = $request('POST', '/login', 'email=invalid%40example.test&password=invalid', $cookie);
     httpCheck($badCsrf['status'] === 419, 'The HTTP login endpoint must reject a missing CSRF token.');
 
