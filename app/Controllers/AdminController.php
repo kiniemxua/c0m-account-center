@@ -55,6 +55,9 @@ final class AdminController
                  ORDER BY u.id FOR UPDATE"
             )->fetchAll(PDO::FETCH_COLUMN);
 
+            if (!Authorization::hasPermission($actorId, 'users.manage')) {
+                throw new \\RuntimeException('actor_permission_revoked');
+            }
             $target = $pdo->prepare('SELECT id, status FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
             $targetRow = $target->fetch();
@@ -83,6 +86,10 @@ final class AdminController
                 $pdo->rollBack();
             }
             $reason = $e->getMessage();
+            if ($reason === 'actor_permission_revoked') {
+                http_response_code(403);
+                exit('Your permission to manage users is no longer active.');
+            }
             if ($reason === 'target_not_found') {
                 http_response_code(404);
                 exit('User not found.');
