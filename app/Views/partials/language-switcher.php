@@ -9,8 +9,8 @@ $returnTo = (string)($_SERVER['REQUEST_URI'] ?? '/');
 <input type="hidden" name="return_to" value="<?= htmlspecialchars($returnTo, ENT_QUOTES, 'UTF-8') ?>">
 <label for="account-language"><?= htmlspecialchars(\App\Core\t('Language'), ENT_QUOTES, 'UTF-8') ?></label>
 <select id="account-language" name="language" onchange="this.form.requestSubmit()">
-<option value="vi" <?= $currentLocale === 'vi' ? 'selected' : '' ?>>Tiếng Việt</option>
-<option value="en" <?= $currentLocale === 'en' ? 'selected' : '' ?>>English</option>
+<option value="vi" <?= $currentLocale === 'vi' ? 'selected' : '' ?>><?= htmlspecialchars(\App\Core\t('Vietnamese'), ENT_QUOTES, 'UTF-8') ?></option>
+<option value="en" <?= $currentLocale === 'en' ? 'selected' : '' ?>><?= htmlspecialchars(\App\Core\t('English'), ENT_QUOTES, 'UTF-8') ?></option>
 </select>
 </form>
 <script>window.C0M_I18N = <?= json_encode(Localization::javascriptMessages(['Confirm','Cancel','Saved','An error occurred.','Please try again.']), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>

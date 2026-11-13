@@ -21,7 +21,10 @@ spl_autoload_register(static function (string $class): void {
 if (!App\Core\RequestSecurity::isHttps(BASE_PATH)) {
     http_response_code(400);
     header('Cache-Control: no-store');
-    exit('HTTPS is required. Configure direct HTTPS or trusted proxy addresses.');
+    $locale = (string)($_COOKIE['c0m_lang'] ?? 'vi');
+    if (!in_array($locale, ['vi', 'en'], true)) $locale = 'vi';
+    $messages = require BASE_PATH . '/lang/' . $locale . '.php';
+    exit((string)($messages['HTTPS is required. Configure direct HTTPS or trusted proxy addresses.'] ?? ($locale === 'vi' ? 'Yêu cầu HTTPS.' : 'HTTPS is required.')));
 }
 
 $configFile = BASE_PATH . '/config/database.php';
