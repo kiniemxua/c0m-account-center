@@ -188,4 +188,6 @@ return [
 'System' => 'System',
 'Details' => 'Details',
 'No audit events found.' => 'No audit events found.',
+'optional' => 'optional',
+'If the request can be completed, an email will be sent shortly.' => 'If the request can be completed, an email will be sent shortly.',
 ];
