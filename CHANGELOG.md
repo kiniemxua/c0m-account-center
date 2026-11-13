@@ -19,6 +19,7 @@
 - Ensure authenticated accounts without a valid saved locale fall back to Vietnamese instead of inheriting stale guest preferences.
 - Harden language-switch return targets against protocol-relative, encoded and malformed redirect values; add HTTP regression coverage for CSRF, cookie flags and member preference persistence.
 - Extend real HTTP coverage to administrator locale switching on protected admin routes, in addition to guest and member persistence; assert UTF-8 recipient names in localized email templates.
+- Add regression coverage proving invalid locale values in session/cookies and Installer query parameters cannot select arbitrary catalog files.
 - Import the global `RuntimeException` explicitly in the authentication controller to avoid a namespaced class lookup failure on the missing-default-role error path.
 - Expand MariaDB integration tests for token expiry/replay, login session fixation, identifier throttling, profile preferences and password change.
 - Add SMTP protocol tests and update cPanel/mail/security documentation.
