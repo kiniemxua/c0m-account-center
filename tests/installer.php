@@ -105,6 +105,11 @@ try {
     installerCheck(!str_contains($badConnection['body'], 'DO_NOT_LEAK_DATABASE_PASSWORD'), 'Database credentials must not appear in installer output.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'A failed database connection must not leave config or install lock behind.');
 
+    $refreshed = $request('GET', '', $cookie);
+    installerCheck($refreshed['status'] === 200 && str_contains($refreshed['body'], 'Install'), 'Refreshing after a failed setup must leave the installer retryable.');
+    $csrf = $csrfFrom($refreshed) ?: $csrf;
+    $cookie = $cookieFrom($refreshed) ?: $cookie;
+
     $partial = $post($csrf, [
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $limitedUser,
         'password' => $limitedPassword, 'admin_name' => 'CI Admin',
@@ -125,6 +130,13 @@ try {
     ], $cookie);
     installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Installation locked'), 'A retry with corrected DB permissions must complete installation.');
     installerCheck(is_file($configPath) && is_file($lockPath), 'Successful recovery must atomically persist config and install lock.');
+
+    // Simulate a crash after config persistence but before install-lock creation.
+    $recoveredCookie = $cookieFrom($recovered) ?: $cookie;
+    @unlink($lockPath);
+    $lockRecovery = $request('GET', '', $recoveredCookie);
+    installerCheck($lockRecovery['status'] === 200 && str_contains($lockRecovery['body'], 'Installation locked'), 'A saved database config without its lock must recover safely.');
+    installerCheck(is_file($lockPath), 'Installer must recreate the missing install lock from the saved DB config.');
 
     $adminId = $root->query("SELECT id FROM users WHERE email = 'installer-ci@example.test'")->fetchColumn();
     installerCheck($adminId !== false, 'Successful install must create the initial administrator.');
