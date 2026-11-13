@@ -37,6 +37,7 @@ final class SessionManager
     public static function establish(int $userId): void
     {
         $pdo = Database::connection();
+        $pdo->exec('DELETE FROM sessions WHERE expires_at < NOW() OR revoked_at < (NOW() - INTERVAL 30 DAY)');
         self::revokeCurrent($pdo);
         session_regenerate_id(true);
 
