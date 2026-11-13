@@ -284,6 +284,10 @@ $_SESSION = [];
 $_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'en', 'return_to' => '/login'];
 (new App\Controllers\LanguageController())->switch();
 assertIntegration(App\Core\Localization::current() === 'en', 'Guest language switch must update the current request.');
+$_SESSION = [];
+$_COOKIE['c0m_lang'] = 'en';
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Guest locale cookie must persist across a fresh session.');
 $_SESSION['user_id'] = (int)$registered['id'];
 $_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' => 'NewStrongPassword84'];
 ob_start();
@@ -449,6 +453,10 @@ assertIntegration($switched->fetchColumn() === 'en', 'Authenticated language can
 $_SESSION['locale'] = 'vi';
 App\Core\Localization::initialize();
 assertIntegration(App\Core\Localization::current() === 'en', 'Stored account language must remain authoritative over guest/session locale.');
+$_SESSION = []; // Simulate the PHP session being cleared by logout.
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Guest locale must remain available after logout.');
+$_SESSION['user_id'] = (int)$registered['id'];
 
 
 // Password change requires the current password, revokes all sessions and sends a notification.
