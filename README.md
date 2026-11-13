@@ -25,7 +25,7 @@ The repository contains an account/authentication foundation:
 - Transactional admin status/role changes and audit events.
 - Member profile preferences (display name, username, language and timezone).
 - Password change with current-password verification, throttling, session revocation and email notification.
-- HTTPS cookie detection supports direct HTTPS and explicitly configured reverse proxies; forwarded headers from untrusted clients are ignored.
+- Application and installer requests fail closed unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS; forwarded headers from untrusted clients are ignored.
 
 **Not production-ready.** The current automated HTTP suite exercises the real PHP router and key access-control/CSRF paths, but does not yet cover every end-to-end account flow. Concurrent last-Super-Admin controller tests, filesystem-permission installer injection, full SMTP TLS/auth failure fixtures, independent security review and broader UI localization remain outstanding. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
 
