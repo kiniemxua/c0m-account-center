@@ -162,6 +162,14 @@ try {
         '_csrf' => $csrf, 'language' => 'en', 'return_to' => 'http://[::1',
     ]), $cookie);
     httpCheck($malformedRedirect['status'] === 303 && in_array('Location: /', $malformedRedirect['headers'], true), 'Malformed redirect targets must safely fall back without a server error.');
+    $controlByteRedirect = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf, 'language' => 'en', 'return_to' => "/safe\r\nLocation: https://evil.example",
+    ]), $cookie);
+    httpCheck($controlByteRedirect['status'] === 303 && in_array('Location: /', $controlByteRedirect['headers'], true), 'Raw control bytes in redirect targets must be rejected before URL parsing.');
+    $encodedControlRedirect = $request('POST', '/language', http_build_query([
+        '_csrf' => $csrf, 'language' => 'en', 'return_to' => '/%0d%0aLocation:%20https://evil.example',
+    ]), $cookie);
+    httpCheck($encodedControlRedirect['status'] === 303 && in_array('Location: /', $encodedControlRedirect['headers'], true), 'Percent-encoded control bytes in redirect paths must be rejected.');
     $localeCookie = '';
     foreach ($guestLanguage['headers'] as $header) {
         if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
