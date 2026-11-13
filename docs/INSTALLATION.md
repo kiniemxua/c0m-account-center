@@ -46,7 +46,7 @@ return [
 ];
 ```
 
-The application trusts X-Forwarded-Proto only when REMOTE_ADDR exactly matches one of these configured IP addresses and the header value is exactly https. Never list arbitrary client IP ranges. If the proxy IP is not configured, the app deliberately does not trust forwarded headers; configure the web server to provide direct HTTPS to PHP or add the correct immediate proxy addresses.
+The application and installer trust X-Forwarded-Proto only when REMOTE_ADDR exactly matches one of these configured IP addresses and the header value is exactly https. Never list arbitrary client IP ranges. If direct HTTPS cannot be detected and the proxy IP is not configured, requests fail with HTTP 400 rather than issuing insecure session cookies; configure the web server to provide direct HTTPS to PHP or add the correct immediate proxy addresses.
 
 ## Manual configuration
 
