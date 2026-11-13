@@ -122,10 +122,23 @@ final class AdminController
             exit('Only a super administrator may assign roles.');
         }
         $targetId = (int)($_POST['user_id'] ?? 0);
-        $roleKey = (string)($_POST['role'] ?? '');
-        if ($targetId < 1 || !in_array($roleKey, ['super_admin', 'admin', 'member'], true)) {
+        $submittedRoles = $_POST['roles'] ?? (isset($_POST['role']) ? [$_POST['role']] : []);
+        if (!is_array($submittedRoles)) {
             http_response_code(400);
             exit('Invalid role assignment.');
+        }
+        $roleKeys = [];
+        foreach ($submittedRoles as $role) {
+            if (!is_string($role) || !in_array($role, ['super_admin', 'admin', 'member'], true)) {
+                http_response_code(400);
+                exit('Invalid role assignment.');
+            }
+            $roleKeys[] = $role;
+        }
+        $roleKeys = array_values(array_unique($roleKeys));
+        if ($targetId < 1 || $roleKeys === []) {
+            http_response_code(400);
+            exit('Select at least one valid role.');
         }
 
         $pdo = Database::connection();
@@ -153,7 +166,7 @@ final class AdminController
                 $targetId,
                 $currentSuper,
                 $targetRow['status'] === 'active',
-                $roleKey === 'super_admin'
+                in_array('super_admin', $roleKeys, true)
             );
 
             $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $targetId]);
@@ -161,11 +174,13 @@ final class AdminController
                 'INSERT INTO user_roles (user_id, role_id)
                  SELECT :user_id, id FROM roles WHERE role_key = :role_key'
             );
-            $assign->execute(['user_id' => $targetId, 'role_key' => $roleKey]);
-            if ($assign->rowCount() !== 1) {
-                throw new \RuntimeException('Role does not exist.');
+            foreach ($roleKeys as $roleKey) {
+                $assign->execute(['user_id' => $targetId, 'role_key' => $roleKey]);
+                if ($assign->rowCount() !== 1) {
+                    throw new \RuntimeException('Role does not exist.');
+                }
             }
-            Authorization::audit($actorId, 'user.role.changed', 'user', (string)$targetId, ['role' => $roleKey]);
+            Authorization::audit($actorId, 'user.roles.changed', 'user', (string)$targetId, ['roles' => $roleKeys]);
             $pdo->commit();
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
