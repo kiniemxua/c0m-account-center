@@ -36,16 +36,19 @@ final class LanguageController
             Localization::persistGuest($locale);
         }
         $return = (string)($_POST['return_to'] ?? '/');
-        $parsed = parse_url($return);
-        $decodedPath = is_array($parsed) ? rawurldecode((string)($parsed['path'] ?? '')) : '';
-        if ($return === ''
+        // Reject raw control bytes before parsing: URL parsers may normalize them.
+        $rawUnsafe = $return === ''
+            || strlen($return) > 2048
             || $return[0] !== '/'
             || str_starts_with($return, '//')
             || str_contains($return, "\\")
-            || preg_match('/[\\x00-\\x1F\\x7F]/', $return)
+            || preg_match('/[\\x00-\\x1F\\x7F]/', $return) === 1;
+        $parsed = $rawUnsafe ? false : parse_url($return);
+        $decodedPath = is_array($parsed) ? rawurldecode((string)($parsed['path'] ?? '')) : '';
+        if ($rawUnsafe
             || str_starts_with($decodedPath, '//')
             || str_contains($decodedPath, "\\")
-            || preg_match('/[\\x00-\\x1F\\x7F]/', $decodedPath)
+            || preg_match('/[\\x00-\\x1F\\x7F]/', $decodedPath) === 1
             || !is_array($parsed)
             || isset($parsed['scheme'])
             || isset($parsed['host'])
