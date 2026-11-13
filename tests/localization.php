@@ -56,11 +56,13 @@ foreach ($viewFiles as $viewFile) {
 localeCheck(str_contains($vi['Welcome back'] ?? '', 'Chào mừng'), 'Vietnamese UTF-8 text must be preserved.');
 localeCheck(($en['Welcome back'] ?? '') === 'Welcome back', 'English catalog must contain English copy.');
 localeCheck(App\Core\Localization::translate('unknown.internal.key') === 'Thông báo hệ thống', 'Vietnamese fallback must be localized and must not expose raw keys.');
+localeCheck(App\Core\Localization::translate('An untranslated interface phrase') === 'Thông báo hệ thống', 'Readable source phrases must not leak when a translation is missing.');
 App\Core\Localization::set('vi');
 localeCheck(App\Core\Localization::translate('Hello {name}', ['name' => 'Lan']) === 'Xin chào Lan', 'Vietnamese placeholder replacement must work.');
 App\Core\Localization::set('en');
 localeCheck(App\Core\Localization::translate('Hello {name}', ['name' => 'Lan']) === 'Hello Lan', 'English placeholder replacement must work.');
 localeCheck(App\Core\Localization::translate('unknown.internal.key') === 'System message', 'English fallback must be localized and must not expose raw keys.');
+localeCheck(App\Core\Localization::translate('An untranslated interface phrase') === 'System message', 'English fallback must not echo untranslated source phrases.');
 foreach (['vi','en','xx'] as $locale) {
     $v = App\Core\EmailTemplates::verification($locale, 'Lan', 'https://example.test/verify?token=abc');
     $p = App\Core\EmailTemplates::passwordReset($locale, 'Lan', 'https://example.test/reset?token=def');

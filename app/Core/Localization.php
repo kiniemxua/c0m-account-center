@@ -67,8 +67,8 @@ final class Localization
             $value = $fallback[$key] ?? null;
         }
         if (!is_string($value)) {
-            // Never expose internal keys. A readable source phrase is the safe fallback.
-            $value = preg_match('/^[a-z0-9_.-]+$/i', $key) ? (self::$locale === 'vi' ? 'Thông báo hệ thống' : 'System message') : $key;
+            // Never expose missing source keys or technical identifiers.
+            $value = self::$locale === 'vi' ? 'Thông báo hệ thống' : 'System message';
         }
         foreach ($replace as $name => $replacement) {
             $value = str_replace('{' . $name . '}', (string)$replacement, $value);
