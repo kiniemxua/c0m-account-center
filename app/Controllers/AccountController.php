@@ -6,6 +6,7 @@ namespace App\Controllers;
 use App\Core\Authorization;
 use App\Core\Csrf;
 use App\Core\Database;
+use App\Core\EmailTemplates;
 use App\Core\MailService;
 use PDO;
 use Throwable;
@@ -170,11 +171,8 @@ final class AccountController
         }
 
         try {
-            MailService::send(
-                $user['email'],
-                'Your c0m.me password was changed',
-                "The password for your c0m.me account was changed. All active sessions were signed out. If you did not make this change, contact support immediately."
-            );
+            $mail = EmailTemplates::passwordChanged((string)($user['language'] ?? 'vi'));
+            MailService::send($user['email'], $mail['subject'], $mail['text']);
         } catch (Throwable $e) {
             error_log('Password-change notification could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }

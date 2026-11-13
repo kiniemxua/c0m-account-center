@@ -10,8 +10,10 @@ use App\Controllers\AuthController;
 use App\Controllers\SecurityController;
 use App\Controllers\AdminController;
 use App\Controllers\AccountController;
+use App\Controllers\LanguageController;
 
 $router = new Router();
+$router->post('/language', [LanguageController::class, 'switch']);
 $router->get('/', [HomeController::class, 'index']);
 $router->get('/login', [AuthController::class, 'showLogin']);
 $router->post('/login', [AuthController::class, 'login']);

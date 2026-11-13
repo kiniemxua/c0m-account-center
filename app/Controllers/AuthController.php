@@ -6,7 +6,9 @@ namespace App\Controllers;
 use App\Core\AppConfig;
 use App\Core\Csrf;
 use App\Core\Database;
+use App\Core\EmailTemplates;
 use App\Core\MailService;
+use App\Core\Localization;
 use App\Core\SessionManager;
 use PDO;
 use Throwable;
@@ -84,8 +86,8 @@ final class AuthController
                 'display_name' => $display,
             ]);
             $userId = (int)$pdo->lastInsertId();
-            $profile = $pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:user_id)');
-            $profile->execute(['user_id' => $userId]);
+            $profile = $pdo->prepare('INSERT INTO user_profiles (user_id, language) VALUES (:user_id, :language)');
+            $profile->execute(['user_id' => $userId, 'language' => Localization::current()]);
             $memberRole = $pdo->prepare(
                 "INSERT INTO user_roles (user_id, role_id)
                  SELECT :user_id, id FROM roles WHERE role_key = 'member'"
@@ -111,11 +113,8 @@ final class AuthController
 
         try {
             $url = AppConfig::baseUrl() . '/verify-email?token=' . rawurlencode($token);
-            MailService::send(
-                $email,
-                'Verify your c0m.me account',
-                "Hello {$display},\n\nVerify your email address using this link:\n{$url}\n\nThis link expires in 24 hours. If you did not request this account, you can ignore this message."
-            );
+            $mail = EmailTemplates::verification(Localization::current(), $display, $url);
+            MailService::send($email, $mail['subject'], $mail['text']);
         } catch (Throwable $e) {
             error_log('Verification email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
@@ -193,18 +192,15 @@ final class AuthController
         $pdo = Database::connection();
         $limited = $this->recordAuthAttempt($pdo, 'resend_verification', $email);
         if (!$limited && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $stmt = $pdo->prepare("SELECT id, display_name FROM users WHERE email = :email AND status = 'pending' LIMIT 1");
+            $stmt = $pdo->prepare("SELECT u.id, u.display_name, p.language FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.email = :email AND u.status = 'pending' LIMIT 1");
             $stmt->execute(['email' => $email]);
             $user = $stmt->fetch();
             if ($user) {
                 try {
                     $token = $this->issueToken($pdo, (int)$user['id'], 'email_verification', 86400);
                     $url = AppConfig::baseUrl() . '/verify-email?token=' . rawurlencode($token);
-                    MailService::send(
-                        $email,
-                        'Verify your c0m.me account',
-                        "Hello " . ($user['display_name'] ?? '') . ",\n\nVerify your email address:\n{$url}\n\nThis link expires in 24 hours."
-                    );
+                    $mail = EmailTemplates::verification((string)($user['language'] ?? 'vi'), (string)($user['display_name'] ?? ''), $url);
+                    MailService::send($email, $mail['subject'], $mail['text']);
                 } catch (Throwable $e) {
                     error_log('Verification resend failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 }
@@ -230,18 +226,15 @@ final class AuthController
         $pdo = Database::connection();
         $limited = $this->recordAuthAttempt($pdo, 'password_reset', $email);
         if (!$limited && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $stmt = $pdo->prepare("SELECT id, display_name FROM users WHERE email = :email AND status = 'active' LIMIT 1");
+            $stmt = $pdo->prepare("SELECT u.id, u.display_name, p.language FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.email = :email AND u.status = 'active' LIMIT 1");
             $stmt->execute(['email' => $email]);
             $user = $stmt->fetch();
             if ($user) {
                 try {
                     $token = $this->issueToken($pdo, (int)$user['id'], 'password_reset', 3600);
                     $url = AppConfig::baseUrl() . '/reset-password?token=' . rawurlencode($token);
-                    MailService::send(
-                        $email,
-                        'Reset your c0m.me password',
-                        "Hello " . ($user['display_name'] ?? '') . ",\n\nUse this one-time link to reset your password:\n{$url}\n\nThe link expires in one hour. If you did not request this, ignore this message."
-                    );
+                    $mail = EmailTemplates::passwordReset((string)($user['language'] ?? 'vi'), (string)($user['display_name'] ?? ''), $url);
+                    MailService::send($email, $mail['subject'], $mail['text']);
                 } catch (Throwable $e) {
                     error_log('Password reset email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 }

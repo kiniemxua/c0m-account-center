@@ -1,10 +1,10 @@
 name: PHP CI
 on:
   push:
-    branches: [main, 'security/**']
+    branches: [main, 'security/**', 'feature/**']
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
-    branches: [main]
+    branches: [main, 'security/**']
 permissions:
   contents: read
 jobs:
@@ -62,6 +62,8 @@ jobs:
         run: find app public config tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
       - name: Unit tests
         run: php tests/unit.php
+      - name: Localization and email template tests
+        run: php tests/localization.php
       - name: SMTP provider test
         run: php tests/smtp.php
       - name: Installer failure and recovery tests

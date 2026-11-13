@@ -1,0 +1,31 @@
+# Localization
+
+## Supported locales
+
+- `vi`: Vietnamese, system default.
+- `en`: English.
+
+The application has no framework or external translation dependency. UTF-8 PHP arrays in `lang/vi.php` and `lang/en.php` are loaded by `App\\Core\\Localization`.
+
+## Locale resolution
+
+1. Authenticated users: `user_profiles.language` is authoritative.
+2. Guests: the session locale, then the `c0m_lang` cookie.
+3. Fallback: `vi`.
+
+The language form posts to `/language`. It uses the existing CSRF protection. The guest cookie is HttpOnly, SameSite=Lax, one year, and Secure on HTTPS. The switcher preserves ordinary non-password form fields across the language refresh; passwords, CSRF values, and one-time tokens are never copied into browser storage.
+
+## Adding a locale
+
+1. Add the locale code to `Localization::SUPPORTED`.
+2. Create `lang/<locale>.php` as a UTF-8 PHP array.
+3. Include every key present in both current catalogs. Keep the keys identical across catalogs.
+4. Add localized system email subjects and bodies to `app/Core/EmailTemplates.php`.
+5. Add the locale to the language switcher.
+6. Add coverage to `tests/localization.php` and run the full database-backed integration suite.
+
+Use `\\App\\Core\\t('English source phrase', ['name' => $value])` in PHP views for user-facing static copy. Keep user-generated content, email addresses, usernames, URLs and tokens untouched. Use `EmailTemplates` for system email content; never translate token values or URLs.
+
+## Tests
+
+Run `php tests/localization.php` for catalog parity, UTF-8, fallback, placeholders and email copy. The integration suite applies migrations against MariaDB/MySQL, checks the `vi` default, re-runs the migration to verify existing preferences survive, and checks that the authenticated account preference overrides a guest/session choice.

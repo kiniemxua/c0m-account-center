@@ -31,6 +31,7 @@ if (is_file($configFile)) {
 }
 
 App\Core\SessionManager::start();
+App\Core\Localization::initialize();
 
 header('X-Content-Type-Options: nosniff');
 header('Referrer-Policy: strict-origin-when-cross-origin');

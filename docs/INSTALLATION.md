@@ -23,6 +23,10 @@ If config/database.php exists but the process stopped before creating install.lo
 
 If DB connection fails, check the DB host, database name, user grants and cPanel database-user assignment. If migration fails, inspect the PHP/server error log (installer logs exception class/code, not submitted credentials), grant the required schema permissions, then retry. A config/lock write failure may require correcting ownership/permissions for config/ and storage/. The automated CI suite covers DB connection and partial-migration failures; actual cPanel filesystem permission behavior still requires deployment-specific verification.
 
+## Language configuration
+
+Vietnamese (`vi`) is the default language. The account preference column is migrated to default to `vi` without overwriting existing `vi` or `en` choices. Guests can change language with the language selector; their choice is stored in the `c0m_lang` cookie. After sign-in, `user_profiles.language` is authoritative and is refreshed on requests. No external translation service or framework is required. To add a language, add a catalog under `lang/`, include its locale in `app/Core/Localization.php`, provide every existing key, and add localized system-email templates in `app/Core/EmailTemplates.php`.
+
 ## Mail configuration
 
 Copy config/mail.example.php to config/mail.php. Keep the file outside public/ and never commit real credentials. For development only, set mode to development_log; this writes one-time verification/reset links to storage/mail.log, so protect and delete that file after testing.

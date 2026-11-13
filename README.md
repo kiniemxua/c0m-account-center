@@ -53,6 +53,10 @@ Run:
 
 The GitHub Actions workflow tests PHP 8.2, 8.3 and 8.4 against MariaDB 11.4. It runs repository-wide PHP syntax checks, unit tests, SMTP protocol tests, installer recovery tests, database integration tests and real HTTP router tests. A configured workflow is not evidence of a passing run; check the Actions result for the exact commit.
 
+## Localization (Vietnamese / English)
+
+The UI uses the built-in `App\\Core\\Localization` service and the UTF-8 catalogs `lang/vi.php` and `lang/en.php`. Vietnamese (`vi`) is the default. The language switcher posts to `/language`; guest choices are kept in a one-year HttpOnly, SameSite=Lax cookie and authenticated choices are stored in `user_profiles.language`. Authenticated account preference takes precedence. Add new message keys to both catalogs and add localized system-email copy to `app/Core/EmailTemplates.php`; do not translate user-provided names, email addresses, URLs or tokens. Run `php tests/localization.php` when changing catalogs or email templates.
+
 ## Security status
 
 See [docs/SECURITY.md](docs/SECURITY.md). Do not accept real member accounts or financial activity until outstanding security work and deployment review are complete.

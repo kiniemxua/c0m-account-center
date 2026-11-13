@@ -50,6 +50,8 @@ $preferencesMigration = file_get_contents(BASE_PATH . '/database/migrations/003_
 assertIntegration($preferencesMigration !== false, 'Account preferences migration must exist.');
 $pdo->exec($preferencesMigration);
 $pdo->exec($preferencesMigration); // Preference defaults must be safe to reapply.
+$languageColumn = $pdo->query("SHOW COLUMNS FROM user_profiles LIKE 'language'")->fetch();
+assertIntegration($languageColumn && $languageColumn['Default'] === 'vi', 'New account profiles must default to Vietnamese.');
 
 $email = 'ci-' . bin2hex(random_bytes(6)) . '@example.test';
 $insert = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
@@ -420,6 +422,17 @@ $profileCheck->execute(['id' => (int)$registered['id']]);
 $profile = $profileCheck->fetch();
 assertIntegration($profile && $profile['display_name'] === 'Updated CI Profile' && $profile['username'] === $profileUsername
     && $profile['language'] === 'en' && $profile['timezone'] === 'UTC', 'Account profile changes must persist validated preferences.');
+$pdo->exec($preferencesMigration);
+$preserved = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$preserved->execute(['id' => (int)$registered['id']]);
+assertIntegration($preserved->fetchColumn() === 'en', 'Re-running the language migration must not overwrite an existing account preference.');
+$_SESSION['user_id'] = (int)$registered['id'];
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Authenticated account language must override a guest language.');
+$_SESSION['locale'] = 'vi';
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Stored account language must remain authoritative over session locale.');
+
 
 // Password change requires the current password, revokes all sessions and sends a notification.
 $_POST = [

@@ -43,7 +43,7 @@ final class AdminController
         $status = (string)($_POST['status'] ?? '');
         if ($targetId < 1 || !in_array($status, ['active', 'suspended', 'banned', 'pending'], true)) {
             http_response_code(400);
-            exit('Invalid user status.');
+            exit(\App\Core\t('Invalid user status.'));
         }
 
         $pdo = Database::connection();
@@ -92,23 +92,23 @@ final class AdminController
             $reason = $e->getMessage();
             if ($reason === 'actor_permission_revoked') {
                 http_response_code(403);
-                exit('Your permission to manage users is no longer active.');
+                exit(\App\Core\t('Your permission to manage users is no longer active.'));
             }
             if ($reason === 'target_not_found') {
                 http_response_code(404);
-                exit('User not found.');
+                exit(\App\Core\t('User not found.'));
             }
             if ($reason === 'super_admin_forbidden') {
                 http_response_code(403);
-                exit('Only a super administrator may manage a super administrator.');
+                exit(\App\Core\t('Only a super administrator may manage a super administrator.'));
             }
             if ($reason === 'last_super_admin') {
                 http_response_code(409);
-                exit('The last active super administrator cannot be disabled.');
+                exit(\App\Core\t('The last active super administrator cannot be disabled.'));
             }
             error_log('User status update failed: ' . $e->getMessage());
             http_response_code(500);
-            exit('User status update failed.');
+            exit(\App\Core\t('User status update failed.'));
         }
 
         header('Location: /admin/users', true, 303);
@@ -123,26 +123,26 @@ final class AdminController
         $actorId = (int)($_SESSION['user_id'] ?? 0);
         if ($actorId < 1 || !Authorization::isSuperAdmin($actorId)) {
             http_response_code(403);
-            exit('Only a super administrator may assign roles.');
+            exit(\App\Core\t('Only a super administrator may assign roles.'));
         }
         $targetId = (int)($_POST['user_id'] ?? 0);
         $submittedRoles = $_POST['roles'] ?? (isset($_POST['role']) ? [$_POST['role']] : []);
         if (!is_array($submittedRoles)) {
             http_response_code(400);
-            exit('Invalid role assignment.');
+            exit(\App\Core\t('Invalid role assignment.'));
         }
         $roleKeys = [];
         foreach ($submittedRoles as $role) {
             if (!is_string($role) || !in_array($role, ['super_admin', 'admin', 'member'], true)) {
                 http_response_code(400);
-                exit('Invalid role assignment.');
+                exit(\App\Core\t('Invalid role assignment.'));
             }
             $roleKeys[] = $role;
         }
         $roleKeys = array_values(array_unique($roleKeys));
         if ($targetId < 1 || $roleKeys === []) {
             http_response_code(400);
-            exit('Select at least one valid role.');
+            exit(\App\Core\t('Select at least one valid role.'));
         }
 
         $pdo = Database::connection();
@@ -183,19 +183,19 @@ final class AdminController
             $reason = $e->getMessage();
             if ($reason === 'actor_no_longer_super_admin') {
                 http_response_code(403);
-                exit('Only a super administrator may assign roles.');
+                exit(\App\Core\t('Only a super administrator may assign roles.'));
             }
             if ($reason === 'target_not_found') {
                 http_response_code(404);
-                exit('User not found.');
+                exit(\App\Core\t('User not found.'));
             }
             if ($reason === 'last_super_admin') {
                 http_response_code(409);
-                exit('The last active super administrator cannot be demoted.');
+                exit(\App\Core\t('The last active super administrator cannot be demoted.'));
             }
             error_log('Role assignment failed: ' . $e->getMessage());
             http_response_code(500);
-            exit('Role assignment failed.');
+            exit(\App\Core\t('Role assignment failed.'));
         }
 
         header('Location: /admin/users', true, 303);
