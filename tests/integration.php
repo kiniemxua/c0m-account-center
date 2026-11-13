@@ -128,6 +128,58 @@ $tokenRow = $pdo->prepare('SELECT used_at FROM auth_tokens WHERE token_hash = :h
 $tokenRow->execute(['hash' => hash('sha256', $rawToken)]);
 assertIntegration($tokenRow->fetchColumn() !== null, 'A verification token must remain consumed after use.');
 
+// Duplicate registration returns the same public response and creates no extra account.
+$_POST = [
+    '_csrf' => App\\Core\\Csrf::token(),
+    'email' => $registrationEmail,
+    'display_name' => 'Duplicate Attempt',
+    'password' => 'StrongPassword42',
+];
+ob_start();
+$controller->register();
+$duplicateOutput = ob_get_clean();
+assertIntegration(str_contains($duplicateOutput, 'If registration can be completed'), 'Duplicate registration must use the generic response.');
+
+// Password recovery must use a hashed one-time token and revoke all persisted sessions.
+$_POST = ['_csrf' => App\\Core\\Csrf::token(), 'email' => $registrationEmail];
+ob_start();
+$controller->forgotPassword();
+ob_end_clean();
+$mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
+preg_match_all('/reset-password\\?token=([a-f0-9]{64})/', $mailLog, $resetMatches);
+assertIntegration(!empty($resetMatches[1]), 'Password recovery must send a reset link for an active account.');
+$resetToken = end($resetMatches[1]);
+$resetHash = hash('sha256', $resetToken);
+$tokenCheck = $pdo->prepare('SELECT token_hash FROM auth_tokens WHERE user_id = :id AND token_type = "password_reset"');
+$tokenCheck->execute(['id' => (int)$registered['id']]);
+assertIntegration($tokenCheck->fetchColumn() === $resetHash, 'Password reset token must be stored only as a hash.');
+
+$sessionHash = hash('sha256', session_id());
+$pdo->prepare(
+    'INSERT INTO sessions (id, user_id, ip_address, user_agent, last_activity, expires_at)
+     VALUES (:id, :user_id, NULL, "reset-test", NOW(), DATE_ADD(NOW(), INTERVAL 1 HOUR))'
+)->execute(['id' => $sessionHash, 'user_id' => (int)$registered['id']]);
+$_SESSION['user_id'] = (int)$registered['id'];
+$_POST = ['_csrf' => App\\Core\\Csrf::token(), 'token' => $resetToken, 'password' => 'NewStrongPassword84'];
+ob_start();
+$controller->resetPassword();
+ob_end_clean();
+$lookup->execute(['email' => $registrationEmail]);
+$afterReset = $lookup->fetch();
+assertIntegration(password_verify('NewStrongPassword84', $afterReset['password_hash'] ?? ''), 'Password reset must replace the password hash.');
+$sessionCheck = $pdo->prepare('SELECT revoked_at FROM sessions WHERE id = :id');
+$sessionCheck->execute(['id' => $sessionHash]);
+assertIntegration($sessionCheck->fetchColumn() !== null, 'Password reset must revoke all active sessions.');
+
+// Replaying the consumed reset token must not change the password.
+$_POST = ['_csrf' => App\\Core\\Csrf::token(), 'token' => $resetToken, 'password' => 'AnotherStrongPassword95'];
+ob_start();
+$controller->resetPassword();
+ob_end_clean();
+$lookup->execute(['email' => $registrationEmail]);
+$afterReplay = $lookup->fetch();
+assertIntegration(password_verify('NewStrongPassword84', $afterReplay['password_hash'] ?? ''), 'A reused reset token must not change the password.');
+
 $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$registered['id']]);
 @unlink(BASE_PATH . '/config/app.php');
 @unlink(BASE_PATH . '/config/mail.php');
