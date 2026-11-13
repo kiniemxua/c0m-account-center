@@ -199,6 +199,39 @@ $passwordLookup->execute(['email' => $registrationEmail]);
 $afterReplay = $passwordLookup->fetch();
 assertIntegration(password_verify('NewStrongPassword84', $afterReplay['password_hash'] ?? ''), 'A reused reset token must not change the password.');
 
+// Expired reset tokens must not mutate credentials.
+$expiredReset = str_repeat('b', 64);
+$pdo->prepare(
+    "INSERT INTO auth_tokens (user_id, token_type, token_hash, expires_at)
+     VALUES (:id, 'password_reset', :hash, DATE_SUB(NOW(), INTERVAL 1 MINUTE))"
+)->execute(['id' => (int)$registered['id'], 'hash' => hash('sha256', $expiredReset)]);
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $expiredReset, 'password' => 'ExpiredTokenPassword66'];
+ob_start();
+$controller->resetPassword();
+ob_end_clean();
+$passwordLookup->execute(['email' => $registrationEmail]);
+$afterExpired = $passwordLookup->fetch();
+assertIntegration(password_verify('NewStrongPassword84', $afterExpired['password_hash'] ?? ''), 'An expired reset token must not change the password.');
+
+// Expired email verification tokens must leave accounts pending.
+$expiredEmail = 'expired-' . bin2hex(random_bytes(5)) . '@example.test';
+$pdo->prepare("INSERT INTO users (email, password_hash, status) VALUES (:email, :hash, 'pending')")
+    ->execute(['email' => $expiredEmail, 'hash' => password_hash('PendingPassword88', PASSWORD_DEFAULT)]);
+$expiredUserId = (int)$pdo->lastInsertId();
+$expiredVerify = str_repeat('c', 64);
+$pdo->prepare(
+    "INSERT INTO auth_tokens (user_id, token_type, token_hash, expires_at)
+     VALUES (:id, 'email_verification', :hash, DATE_SUB(NOW(), INTERVAL 1 MINUTE))"
+)->execute(['id' => $expiredUserId, 'hash' => hash('sha256', $expiredVerify)]);
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $expiredVerify];
+ob_start();
+$controller->verifyEmail();
+ob_end_clean();
+$pendingCheck = $pdo->prepare('SELECT status FROM users WHERE id = :id');
+$pendingCheck->execute(['id' => $expiredUserId]);
+assertIntegration($pendingCheck->fetchColumn() === 'pending', 'An expired verification token must not activate an account.');
+$pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $expiredUserId]);
+
 $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => (int)$registered['id']]);
 @unlink(BASE_PATH . '/config/app.php');
 @unlink(BASE_PATH . '/config/mail.php');
