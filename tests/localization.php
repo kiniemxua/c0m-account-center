@@ -11,6 +11,7 @@ function localeCheck(bool $ok, string $message): void { if (!$ok) throw new Runt
 $vi = App\Core\Localization::all('vi');
 $en = App\Core\Localization::all('en');
 localeCheck($vi !== [] && $en !== [], 'Both translation catalogs must load.');
+localeCheck(isset($vi['Apply'], $en['Apply']) && $vi['Apply'] === 'Áp dụng' && $en['Apply'] === 'Apply', 'Language switcher action must be translated in both catalogs.');
 localeCheck(App\Core\Localization::current() === 'vi', 'Vietnamese must be the default locale.');
 $missingVi = array_diff(array_keys($en), array_keys($vi));
 $missingEn = array_diff(array_keys($vi), array_keys($en));
