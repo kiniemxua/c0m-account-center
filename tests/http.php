@@ -371,15 +371,16 @@ try {
     $adminPreference->execute(['id' => $testUserId]);
     httpCheck($adminPreference->fetchColumn() === 'en', 'Administrator language switching must persist the account preference.');
     $adminPageEn = $request('GET', '/admin/users', '', $authCookie);
-    httpCheck($adminPageVi['status'] === 200 && str_contains($adminPageVi['body'], '<html lang="en">'), 'The administrator interface must render in the newly saved English language.');
+    httpCheck($adminPageEn['status'] === 200 && str_contains($adminPageEn['body'], '<html lang="en">'), 'The administrator interface must render in the newly saved English language.');
     $adminCsrfEn = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $adminPageVi['body'], $match)) {
-        $adminCsrfVi = $match[1];
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $adminPageEn['body'], $match)) {
+        $adminCsrfEn = $match[1];
     }
+    httpCheck($adminCsrfEn !== '', 'The English admin page must retain a valid CSRF token.');
     $adminLanguageBack = $request('POST', '/language', http_build_query([
-        '_csrf' => $adminCsrfVi, 'language' => 'vi', 'return_to' => '/admin/users',
+        '_csrf' => $adminCsrfEn, 'language' => 'vi', 'return_to' => '/admin/users',
     ]), $authCookie);
-    httpCheck($adminLanguageBack['status'] === 303, 'An administrator must be able to switch back to English.');
+    httpCheck($adminLanguageBack['status'] === 303, 'An administrator must be able to switch back to Vietnamese.');
     $adminPageVi = $request('GET', '/admin/users', '', $authCookie);
     httpCheck($adminPageVi['status'] === 200 && str_contains($adminPageVi['body'], '<html lang="vi">'), 'The administrator Vietnamese preference must persist across requests.');
 
