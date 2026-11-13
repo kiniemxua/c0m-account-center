@@ -245,7 +245,7 @@ try {
         }
     }
     $csrf = '';
-    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $login['body'], $match)) {
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $login['body'], $match)) {
         $csrf = $match[1];
     }
     httpCheck($cookie !== '' && $csrf !== '', 'A fresh login form must issue a new session and CSRF token after logout.');
