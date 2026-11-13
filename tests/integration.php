@@ -130,7 +130,7 @@ assertIntegration($tokenRow->fetchColumn() !== null, 'A verification token must 
 
 // Duplicate registration returns the same public response and creates no extra account.
 $_POST = [
-    '_csrf' => App\Core\\Csrf::token(),
+    '_csrf' => App\Core\Csrf::token(),
     'email' => $registrationEmail,
     'display_name' => 'Duplicate Attempt',
     'password' => 'StrongPassword42',
@@ -141,7 +141,7 @@ $duplicateOutput = ob_get_clean();
 assertIntegration(str_contains($duplicateOutput, 'If registration can be completed'), 'Duplicate registration must use the generic response.');
 
 // Password recovery must use a hashed one-time token and revoke all persisted sessions.
-$_POST = ['_csrf' => App\Core\\Csrf::token(), 'email' => $registrationEmail];
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'email' => $registrationEmail];
 ob_start();
 $controller->forgotPassword();
 ob_end_clean();
@@ -160,7 +160,7 @@ $pdo->prepare(
      VALUES (:id, :user_id, NULL, "reset-test", NOW(), DATE_ADD(NOW(), INTERVAL 1 HOUR))'
 )->execute(['id' => $sessionHash, 'user_id' => (int)$registered['id']]);
 $_SESSION['user_id'] = (int)$registered['id'];
-$_POST = ['_csrf' => App\Core\\Csrf::token(), 'token' => $resetToken, 'password' => 'NewStrongPassword84'];
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' => 'NewStrongPassword84'];
 ob_start();
 $controller->resetPassword();
 ob_end_clean();
@@ -172,7 +172,7 @@ $sessionCheck->execute(['id' => $sessionHash]);
 assertIntegration($sessionCheck->fetchColumn() !== null, 'Password reset must revoke all active sessions.');
 
 // Replaying the consumed reset token must not change the password.
-$_POST = ['_csrf' => App\Core\\Csrf::token(), 'token' => $resetToken, 'password' => 'AnotherStrongPassword95'];
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' => 'AnotherStrongPassword95'];
 ob_start();
 $controller->resetPassword();
 ob_end_clean();
