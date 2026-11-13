@@ -54,7 +54,7 @@ return [
 'Please choose a supported language.' => 'Vui lòng chọn ngôn ngữ được hỗ trợ.',
 'Could not save your language preference.' => 'Không thể lưu lựa chọn ngôn ngữ của bạn.',
 'Language preference saved.' => 'Đã lưu lựa chọn ngôn ngữ.',
-'Vietnamese' => 'Tiếng Việt', 'English' => 'English', 'Save' => 'Lưu',
+'Vietnamese' => 'Tiếng Việt', 'English' => 'English', 'Save' => 'Lưu', 'Apply' => 'Áp dụng',
 'Unknown browser' => 'Trình duyệt không xác định', 'IP:' => 'IP:', 'Last activity:' => 'Hoạt động gần nhất:',
 'Expires:' => 'Hết hạn:', 'Successful sign-in' => 'Đăng nhập thành công', 'Failed sign-in' => 'Đăng nhập thất bại',
 
