@@ -108,7 +108,7 @@ final class SmtpMailer implements MailProviderInterface
             self::expect($socket, [250]);
             self::command($socket, 'QUIT', [221]);
         } catch (\Throwable $e) {
-            error_log('SMTP delivery failed: ' . $e->getMessage());
+            error_log('SMTP delivery failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             throw new RuntimeException('Email delivery failed.');
         } finally {
             fclose($socket);
