@@ -37,7 +37,7 @@ final class LanguageController
         }
         $return = (string)($_POST['return_to'] ?? '/');
         $parsed = parse_url($return);
-        $decodedPath = rawurldecode((string)($parsed['path'] ?? ''));
+        $decodedPath = is_array($parsed) ? rawurldecode((string)($parsed['path'] ?? '')) : '';
         if ($return === ''
             || $return[0] !== '/'
             || str_starts_with($return, '//')
@@ -47,7 +47,10 @@ final class LanguageController
             || str_contains($decodedPath, "\\")
             || preg_match('/[\\x00-\\x1F\\x7F]/', $decodedPath)
             || !is_array($parsed)
-            || isset($parsed['scheme'], $parsed['host'], $parsed['user'], $parsed['pass'])) {
+            || isset($parsed['scheme'])
+            || isset($parsed['host'])
+            || isset($parsed['user'])
+            || isset($parsed['pass'])) {
             $return = '/';
         }
         header('Location: ' . $return, true, 303);
