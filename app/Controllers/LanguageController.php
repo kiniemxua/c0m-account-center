@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Csrf;
 use App\Core\Database;
 use App\Core\Localization;
+use Throwable;
 
 final class LanguageController
 {
@@ -21,10 +22,16 @@ final class LanguageController
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId > 0) {
-            $stmt = Database::connection()->prepare('UPDATE user_profiles SET language = :language WHERE user_id = :id');
-            $stmt->execute(['language' => $locale, 'id' => $userId]);
-            Localization::set($locale);
-            Localization::writeGuestCookie($locale);
+            try {
+                $stmt = Database::connection()->prepare('UPDATE user_profiles SET language = :language WHERE user_id = :id');
+                $stmt->execute(['language' => $locale, 'id' => $userId]);
+                Localization::set($locale);
+                Localization::writeGuestCookie($locale);
+            } catch (Throwable $e) {
+                error_log('Account language preference update failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
+                http_response_code(500);
+                exit(Localization::translate('Could not save your language preference.'));
+            }
         } else {
             Localization::persistGuest($locale);
         }

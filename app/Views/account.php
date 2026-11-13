@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="<?= ($account['language'] ?? 'vi') === 'vi' ? 'vi' : 'en' ?>">
+<html lang="<?= \App\Core\Localization::current() ?>">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?= \App\Core\t("Account settings") ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css"></head>
 <body><?php require __DIR__ . '/partials/language-switcher.php'; ?><main class="shell">
 <nav class="nav"><a class="brand" href="/dashboard">c0m.me</a><a class="nav-link" href="/dashboard"><?= \App\Core\t("Dashboard") ?></a></nav>

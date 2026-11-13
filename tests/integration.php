@@ -198,7 +198,7 @@ ob_end_clean();
 $lookup = $pdo->prepare('SELECT id, status, email_verified_at FROM users WHERE email = :email');
 $lookup->execute(['email' => $registrationEmail]);
 $registered = $lookup->fetch();
-assertIntegration($registered && $registered['status'] === 'pending', 'Registration must create a pending account.');
+assertIntegration($registered && $registered['status'] === 'pending', 'Registration must create a pending account.');\n$registeredLanguage = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');\n$registeredLanguage->execute(['id' => (int)$registered['id']]);\nassertIntegration($registeredLanguage->fetchColumn() === 'vi', 'New accounts must inherit the Vietnamese default when no locale was selected.');
 $mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
 preg_match('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $matches);
 assertIntegration(isset($matches[1]), 'Registration must send a verification link through the configured mail provider.');

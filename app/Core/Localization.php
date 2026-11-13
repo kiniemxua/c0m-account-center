@@ -68,7 +68,7 @@ final class Localization
         }
         if (!is_string($value)) {
             // Never expose internal keys. A readable source phrase is the safe fallback.
-            $value = preg_match('/^[a-z0-9_.-]+$/i', $key) ? 'Thông báo hệ thống' : $key;
+            $value = preg_match('/^[a-z0-9_.-]+$/i', $key) ? (self::$locale === 'vi' ? 'Thông báo hệ thống' : 'System message') : $key;
         }
         foreach ($replace as $name => $replacement) {
             $value = str_replace('{' . $name . '}', (string)$replacement, $value);

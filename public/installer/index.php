@@ -8,7 +8,7 @@ if (isset($_GET['lang']) && in_array($_GET['lang'], ['vi', 'en'], true)) {
     setcookie('c0m_lang', $installerLocale, ['expires' => time() + 31536000, 'path' => '/', 'secure' => true, 'httponly' => true, 'samesite' => 'Lax']);
 }
 $installerCatalog = require $root . '/lang/' . $installerLocale . '.php';
-$installerT = static fn(string $key): string => (string)($installerCatalog[$key] ?? $key);
+$installerT = static fn(string $key): string => (string)($installerCatalog[$key] ?? ($installerLocale === 'vi' ? 'Thông báo hệ thống' : 'System message'));
 require_once $root . '/app/Core/RequestSecurity.php';
 if (!\App\Core\RequestSecurity::isHttps($root)) {
     http_response_code(400);
@@ -130,8 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                     }
                     $id = (int)$existing['id'];
                 }
-                $profile = $pdo->prepare('INSERT IGNORE INTO user_profiles (user_id) VALUES (:id)');
-                $profile->execute(['id' => (int)$id]);
+                $profile = $pdo->prepare('INSERT IGNORE INTO user_profiles (user_id, language) VALUES (:id, :language)');
+                $profile->execute(['id' => (int)$id, 'language' => $installerLocale]);
                 $role = $pdo->prepare(
                     "INSERT IGNORE INTO user_roles (user_id, role_id)
                      SELECT :user_id, id FROM roles WHERE role_key = 'super_admin'"
@@ -183,17 +183,17 @@ if (!$done && empty($_SESSION['install_csrf'])) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>c0m.me Installer</title>
+<title>c0m.me — <?= htmlspecialchars($installerT('Installer'), ENT_QUOTES, 'UTF-8') ?></title>
 <link rel="stylesheet" href="/assets/css/app.css">
 </head>
-<body><form method="get" class="language-switcher" style="position:fixed;top:12px;right:12px;z-index:5"><label for="installer-language"><?= htmlspecialchars($installerT("Language"), ENT_QUOTES, 'UTF-8') ?></label><select id="installer-language" name="lang" onchange="this.form.submit()"><option value="vi" <?= $installerLocale === 'vi' ? 'selected' : '' ?>>Tiếng Việt</option><option value="en" <?= $installerLocale === 'en' ? 'selected' : '' ?>>English</option></select></form>
+<body><form method="get" class="language-switcher" style="position:fixed;top:12px;right:12px;z-index:5"><label for="installer-language"><?= htmlspecialchars($installerT("Language"), ENT_QUOTES, 'UTF-8') ?></label><select id="installer-language" name="lang" onchange="this.form.submit()"><option value="vi" <?= $installerLocale === 'vi' ? 'selected' : '' ?>><?= htmlspecialchars($installerT('Vietnamese'), ENT_QUOTES, 'UTF-8') ?></option><option value="en" <?= $installerLocale === 'en' ? 'selected' : '' ?>><?= htmlspecialchars($installerT('English'), ENT_QUOTES, 'UTF-8') ?></option></select></form>
 <main class="auth-wrap">
 <a class="brand" href="/">c0m.me</a>
 <section class="auth-card">
 <span class="eyebrow"><?= htmlspecialchars($installerT("SETUP WIZARD"), ENT_QUOTES, 'UTF-8') ?></span>
-<h1><?= $done ? '<?= htmlspecialchars($installerT("Installation locked"), ENT_QUOTES, 'UTF-8') ?>' : '<?= htmlspecialchars($installerT("Set up your Account Center"), ENT_QUOTES, 'UTF-8') ?>' ?></h1>
+<h1><?= htmlspecialchars($installerT($done ? 'Installation locked' : 'Set up your Account Center'), ENT_QUOTES, 'UTF-8') ?></h1>
 <?php if ($done): ?>
-<p><?= $error ? htmlspecialchars($installerT($error), ENT_QUOTES, 'UTF-8') : 'The installation is locked. Remove public access to /installer/ and sign in with the administrator account.' ?></p>
+<p><?= $error ? htmlspecialchars($installerT($error), ENT_QUOTES, 'UTF-8') : htmlspecialchars($installerT('The installation is locked. Remove public access to /installer/ and sign in with the administrator account.'), ENT_QUOTES, 'UTF-8') ?></p>
 <a class="button full" href="/login"><?= htmlspecialchars($installerT("Continue to sign in"), ENT_QUOTES, 'UTF-8') ?></a>
 <?php else: ?>
 <p><?= htmlspecialchars($installerT("PHP 8.2+, PDO MySQL and a newly created database are required."), ENT_QUOTES, 'UTF-8') ?></p>
@@ -201,7 +201,7 @@ if (!$done && empty($_SESSION['install_csrf'])) {
 <form method="post">
 <input type="hidden" name="_csrf" value="<?= htmlspecialchars($_SESSION['install_csrf'], ENT_QUOTES, 'UTF-8') ?>">
 <label><?= htmlspecialchars($installerT("Database host"), ENT_QUOTES, 'UTF-8') ?></label><input name="host" value="localhost" required>
-<label><?= htmlspecialchars($installerT("Port"), ENT_QUOTES, 'UTF-8') ?></label><input name="port" type="number" value="3306" min="1" max="65535" required>
+<label><?= htmlspecialchars($installerT("Database port"), ENT_QUOTES, 'UTF-8') ?></label><input name="port" type="number" value="3306" min="1" max="65535" required>
 <label><?= htmlspecialchars($installerT("Database name"), ENT_QUOTES, 'UTF-8') ?></label><input name="name" required>
 <label><?= htmlspecialchars($installerT("Database username"), ENT_QUOTES, 'UTF-8') ?></label><input name="user" required>
 <label><?= htmlspecialchars($installerT("Database password"), ENT_QUOTES, 'UTF-8') ?></label><input name="password" type="password" autocomplete="new-password">
@@ -220,18 +220,22 @@ if (!$done && empty($_SESSION['install_csrf'])) {
  const selector = document.getElementById('installer-language');
  if (selector) selector.form.addEventListener('submit', () => {
    const values = [];
-   document.querySelectorAll('input,select,textarea').forEach(el => {
-     if (!el.name || ['password','hidden','file'].includes(el.type) || el === selector) return;
-     values.push({name:el.name,value:el.type === 'checkbox' ? el.checked : el.value,type:el.type});
+   Array.from(document.forms).forEach((form, formIndex) => {
+     if (form === selector.form) return;
+     Array.from(form.elements).forEach((el, elementIndex) => {
+       if (!['INPUT','SELECT','TEXTAREA'].includes(el.tagName) || !el.name || ['password','hidden','file','submit','button','reset'].includes(el.type)) return;
+       values.push({formIndex,elementIndex,type:el.type,value:el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value});
+     });
    });
    try { sessionStorage.setItem(key, JSON.stringify(values)); } catch (_) {}
  });
  try {
    const values = JSON.parse(sessionStorage.getItem(key) || '[]');
    values.forEach(v => {
-     const el = document.querySelector('[name="' + CSS.escape(v.name) + '"]');
-     if (!el || el.type === 'password' || el.type === 'hidden') return;
-     if (el.type === 'checkbox') el.checked = !!v.value; else el.value = v.value;
+     const form = document.forms[v.formIndex];
+     const el = form && form.elements[v.elementIndex];
+     if (!el || el.type === 'password' || el.type === 'hidden' || el.type === 'file') return;
+     if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v.value; else el.value = v.value;
    });
    if (values.length) sessionStorage.removeItem(key);
  } catch (_) {}

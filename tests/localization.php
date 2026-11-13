@@ -19,10 +19,31 @@ $partialSource = file_get_contents(BASE_PATH . '/app/Views/partials/language-swi
 localeCheck($partialSource !== false && str_contains($partialSource, 'window.C0M_I18N') && str_contains($partialSource, 'sessionStorage'), 'JavaScript must receive localized messages and preserve non-password form state.');
 $installerSource = file_get_contents(BASE_PATH . '/public/installer/index.php');
 localeCheck($installerSource !== false && str_contains($installerSource, '$installerLocale') && str_contains($installerSource, '$installerT'), 'Installer must use the language catalog and locale switcher.');
-$viewFiles = glob(BASE_PATH . '/app/Views/*.php') ?: [];
+
+$sourceFiles = array_merge(
+    glob(BASE_PATH . '/app/Views/*.php') ?: [],\n    glob(BASE_PATH . '/app/Views/partials/*.php') ?: [],
+    glob(BASE_PATH . '/app/Controllers/*.php') ?: [],
+    [BASE_PATH . '/public/installer/index.php']
+);
+$requiredKeys = [];
+foreach ($sourceFiles as $sourceFile) {
+    $source = file_get_contents($sourceFile);
+    localeCheck($source !== false, 'Application source must be readable: ' . basename($sourceFile));
+    if (preg_match_all('~(?:\\bt|Localization::translate|\\$installerT)\\s*\\(\\s*(["\\x27])(.*?)\\1~s', $source, $matches)) {
+        foreach ($matches[2] as $key) $requiredKeys[$key] = true;
+    }
+    if (preg_match_all('~\\$(?:error|message)\\s*=\\s*(["\\x27])(.*?)\\1~s', $source, $messages)) {
+        foreach ($messages[2] as $key) $requiredKeys[$key] = true;
+    }
+}
+foreach (array_keys($requiredKeys) as $key) {
+    localeCheck(array_key_exists($key, $vi), 'Missing Vietnamese translation: ' . $key);
+    localeCheck(array_key_exists($key, $en), 'Missing English translation: ' . $key);
+}
+\n$viewFiles = glob(BASE_PATH . '/app/Views/*.php') ?: [];
 foreach ($viewFiles as $viewFile) {
     $viewSource = file_get_contents($viewFile);
-    localeCheck($viewSource !== false && str_contains($viewSource, 'Localization::current()'), 'Every application page must declare the active locale: ' . basename($viewFile));
+    localeCheck($viewSource !== false && str_contains($viewSource, 'Localization::current()'), 'Every application page must declare the active locale: ' . basename($viewFile));\n    $plainHtml = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $viewSource) ?? $viewSource;\n    foreach (['New here?', 'Create account</button>', 'User administration — c0m.me', 'Forgot password — c0m.me', 'Reset password — c0m.me', 'Verify email — c0m.me', 'Your digital home</title>', 'App Hub</h2>', 'Last activity:', 'Expires:', 'placeholder="optional"'] as $rawCopy) { localeCheck(!str_contains($plainHtml, $rawCopy), 'Hardcoded interface copy remains in ' . basename($viewFile) . ': ' . $rawCopy); }
     localeCheck(str_contains($viewSource, "partials/language-switcher.php"), 'Every application page must expose the language switcher: ' . basename($viewFile));
 }
 localeCheck(str_contains($vi['Welcome back'] ?? '', 'Chào mừng'), 'Vietnamese UTF-8 text must be preserved.');

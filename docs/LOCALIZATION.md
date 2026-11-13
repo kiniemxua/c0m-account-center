@@ -17,7 +17,7 @@ The language form posts to `/language`. It uses the existing CSRF protection. Th
 
 ## Adding a locale
 
-1. Add the locale code to `Localization::SUPPORTED`.
+1. Add the locale code to `Localization::SUPPORTED` and keep `vi` as the system fallback.
 2. Create `lang/<locale>.php` as a UTF-8 PHP array.
 3. Include every key present in both current catalogs. Keep the keys identical across catalogs.
 4. Add localized system email subjects and bodies to `app/Core/EmailTemplates.php`.

@@ -17,12 +17,15 @@ $returnTo = (string)($_SERVER['REQUEST_URI'] ?? '/');
 <script>
 (() => {
  const key = 'c0m-form:' + location.pathname;
- const form = document.querySelector('.language-switcher');
- if (form) form.addEventListener('submit', () => {
+ const switcher = document.querySelector('form.language-switcher');
+ if (switcher) switcher.addEventListener('submit', () => {
    const values = [];
-   document.querySelectorAll('input,select,textarea').forEach((el) => {
-     if (!el.name || ['password','hidden','file'].includes(el.type) || el === form.querySelector('[name=language]') || el.name === '_csrf' || el.name === 'token') return;
-     values.push({name:el.name,type:el.type,value:el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value});
+   Array.from(document.forms).forEach((form, formIndex) => {
+     if (form.classList.contains('language-switcher')) return;
+     Array.from(form.elements).forEach((el, elementIndex) => {
+       if (!['INPUT','SELECT','TEXTAREA'].includes(el.tagName) || !el.name || ['password','hidden','file','submit','button','reset'].includes(el.type) || el.name === 'token' || el.name === '_csrf') return;
+       values.push({formIndex, elementIndex, type:el.type, value:el.type === 'checkbox' || el.type === 'radio' ? el.checked : el.value});
+     });
    });
    try { sessionStorage.setItem(key, JSON.stringify(values)); } catch (_) {}
  });
@@ -30,8 +33,9 @@ $returnTo = (string)($_SERVER['REQUEST_URI'] ?? '/');
    const saved = JSON.parse(sessionStorage.getItem(key) || '[]');
    if (Array.isArray(saved) && saved.length) {
      saved.forEach((v) => {
-       const el = document.querySelector('[name="' + CSS.escape(v.name) + '"]');
-       if (!el || el.type === 'password' || el.type === 'hidden') return;
+       const form = document.forms[v.formIndex];
+       const el = form && form.elements[v.elementIndex];
+       if (!el || el.type === 'password' || el.type === 'hidden' || el.type === 'file') return;
        if (el.type === 'checkbox' || el.type === 'radio') el.checked = !!v.value; else el.value = v.value;
      });
      sessionStorage.removeItem(key);

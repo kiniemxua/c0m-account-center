@@ -25,7 +25,7 @@ If DB connection fails, check the DB host, database name, user grants and cPanel
 
 ## Language configuration
 
-Vietnamese (`vi`) is the default language. The account preference column is migrated to default to `vi` without overwriting existing `vi` or `en` choices. Guests can change language with the language selector; their choice is stored in the `c0m_lang` cookie. After sign-in, `user_profiles.language` is authoritative and is refreshed on requests. No external translation service or framework is required. To add a language, add a catalog under `lang/`, include its locale in `app/Core/Localization.php`, provide every existing key, and add localized system-email templates in `app/Core/EmailTemplates.php`.
+Vietnamese (`vi`) is the default language and English (`en`) is also supported. Migration 003 changes the default for new profile rows without overwriting existing preferences. Guests can change language with the shared selector; their choice is stored in the one-year `c0m_lang` HttpOnly, SameSite=Lax cookie and PHP session. Authenticated users use `user_profiles.language` as the authoritative preference; it is mirrored to the guest cookie so the selected language remains available after logout. Verification, password-reset and password-change security emails use the recipient's saved language. The installer has its own language selector before the application database is available. To add a language, add a complete UTF-8 catalog under `lang/`, register the locale in `app/Core/Localization.php`, translate every existing key, add localized system-email subjects and bodies in `app/Core/EmailTemplates.php`, update the switcher and extend `tests/localization.php`.
 
 ## Mail configuration
 
