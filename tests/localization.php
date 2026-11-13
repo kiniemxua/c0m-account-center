@@ -105,9 +105,11 @@ App\Core\Localization::persistGuest('vi');
 localeCheck(App\Core\Localization::current() === 'vi', 'Guest locale can return to Vietnamese.');
 
 foreach (["ACCOUNT CENTER","PROFILE","optional","SECURITY","ADMINISTRATION","ADMIN SETTINGS","MEMBER DASHBOARD","Your account hub is being built. Application directory and security controls will appear here as their modules are implemented.","ACCOUNT","APPLICATIONS","ACCOUNT RECOVERY","ONE ACCOUNT · YOUR ECOSYSTEM","Manage your profile, sessions and account security.","Discover connected applications from one app hub.","Passkeys, two-step verification and connected apps.","Account Center","ACCOUNT SECURITY","SUCCESSFUL SIGN-IN","FAILED SIGN-IN","Your password was changed. Please sign in again.","If the request can be completed, an email will be sent shortly.","Email address to resend verification","Resend verification email","This reset link is invalid, expired or already used. Request another link.","Your password has been updated. All active sessions have been revoked.","The reset link is invalid, expired or already used, or the password did not meet the requirements.","THIS DEVICE","ACTIVE SESSION","Email verification","EMAIL VERIFICATION","Confirm that this email address belongs to you. The link can only be used once.","This verification link is invalid, expired or already used. Request a new verification email if your account is still pending.","Your account is active. You can now sign in.","This link is invalid, expired or has already been used."] as $viewKey) {
-    localeCheck(App\Core\\Localization::translate($viewKey) !== $viewKey, 'Public and account views must have a translated catalog entry: ' . $viewKey);
-    App\Core\\Localization::set('en');
-    localeCheck(App\Core\\Localization::translate($viewKey) !== $viewKey, 'English view copy must be present: ' . $viewKey);
-    App\Core\\Localization::set('vi');
+    localeCheck(isset($vi[$viewKey]) && trim($vi[$viewKey]) !== '', 'Vietnamese catalog value must be present: ' . $viewKey);
+    localeCheck(isset($en[$viewKey]) && trim($en[$viewKey]) !== '', 'English catalog value must be present: ' . $viewKey);
+    localeCheck(App\Core\Localization::translate($viewKey) !== $viewKey, 'Public and account views must have a translated catalog entry: ' . $viewKey);
+    App\Core\Localization::set('en');
+    localeCheck(App\Core\Localization::translate($viewKey) !== $viewKey, 'English view copy must be present: ' . $viewKey);
+    App\Core\Localization::set('vi');
 }
 echo "Localization catalog and email template tests passed.\n";
