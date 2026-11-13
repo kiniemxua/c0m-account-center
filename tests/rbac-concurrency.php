@@ -39,7 +39,14 @@ try {
         usleep(20000);
     }
     if (!is_file($marker)) {
-        throw new RuntimeException('First RBAC worker did not acquire the lock in time.');
+        proc_terminate($process1);
+        $workerOut = stream_get_contents($pipes1[1]);
+        $workerErr = stream_get_contents($pipes1[2]);
+        throw new RuntimeException(
+            'First RBAC worker did not acquire the lock in time. ' .
+            'stdout=' . substr((string)$workerOut, 0, 500) .
+            ' stderr=' . substr((string)$workerErr, 0, 500)
+        );
     }
 
     // The second operation races to demote the actor while the first operation
