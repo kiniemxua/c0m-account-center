@@ -99,6 +99,11 @@ try {
     }
     installerCheck($englishLocaleCookie === 'c0m_lang=en', 'Installer language selection must persist in the locale cookie.');
 
+    $invalidInstallerLocale = $request('GET', '', '', true, '/installer/?lang=../config/database');
+    installerCheck($invalidInstallerLocale['status'] === 200 && str_contains($invalidInstallerLocale['body'], '<html lang="vi">'), 'An unsupported installer locale must fall back to Vietnamese before any catalog file is loaded.');
+    $invalidInstallerCookie = $request('GET', '', 'c0m_lang=../config/database');
+    installerCheck($invalidInstallerCookie['status'] === 200 && str_contains($invalidInstallerCookie['body'], '<html lang="vi">'), 'An unsupported locale cookie must fall back to Vietnamese safely.');
+
     $insecureRequest = $request('GET', '', '', false);
     installerCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'HTTPS is required'), 'Installer must reject HTTP when HTTPS is not proven.');
 
