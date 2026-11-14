@@ -85,22 +85,22 @@ $userId = (int)$pdo->lastInsertId();
 // Account language is authoritative over stale session/cookie values; invalid saved values safely fall back.
 $_SESSION = ['user_id' => $userId, 'locale' => 'en'];
 $_COOKIE = ['c0m_lang' => 'en'];
-App\\Core\\Localization::initialize();
-assertIntegration(App\\Core\\Localization::current() === 'vi', 'A signed-in account with no saved language preference must use Vietnamese, not the guest cookie.');
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'vi', 'A signed-in account with no saved language preference must use Vietnamese, not the guest cookie.');
 $pdo->prepare('INSERT INTO user_profiles (user_id, language) VALUES (:id, \'en\')')->execute(['id' => $userId]);
 $_SESSION['locale'] = 'vi';
 $_COOKIE['c0m_lang'] = 'vi';
-App\\Core\\Localization::initialize();
-assertIntegration(App\\Core\\Localization::current() === 'en', 'A valid English account preference must override stale Vietnamese session and cookie values.');
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'A valid English account preference must override stale Vietnamese session and cookie values.');
 $pdo->prepare('UPDATE user_profiles SET language = \'invalid\' WHERE user_id = :id')->execute(['id' => $userId]);
 $_SESSION['locale'] = 'en';
 $_COOKIE['c0m_lang'] = 'en';
-App\\Core\\Localization::initialize();
-assertIntegration(App\\Core\\Localization::current() === 'vi', 'An invalid stored account locale must safely fall back to Vietnamese.');
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'vi', 'An invalid stored account locale must safely fall back to Vietnamese.');
 $pdo->prepare('UPDATE user_profiles SET language = \'vi\' WHERE user_id = :id')->execute(['id' => $userId]);
 $_SESSION = [];
 $_COOKIE = [];
-App\\Core\\Localization::set('vi');
+App\Core\Localization::set('vi');
 
 // Authenticated accounts with no profile row must not inherit a stale guest locale.
 $_SESSION = ['user_id' => $userId, 'locale' => 'en'];
