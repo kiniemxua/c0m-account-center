@@ -6,11 +6,19 @@ final class Csrf
 {
     public static function token(): string
     {
-        if (empty($_SESSION['_csrf'])) $_SESSION['_csrf'] = bin2hex(random_bytes(32));
+        $stored = $_SESSION['_csrf'] ?? null;
+        if (!is_string($stored) || !preg_match('/\A[a-f0-9]{64}\z/D', $stored)) {
+            $_SESSION['_csrf'] = bin2hex(random_bytes(32));
+        }
         return $_SESSION['_csrf'];
     }
-    public static function verify(?string $token): bool
+
+    public static function verify(mixed $token): bool
     {
-        return is_string($token) && isset($_SESSION['_csrf']) && hash_equals($_SESSION['_csrf'], $token);
+        $expected = $_SESSION['_csrf'] ?? null;
+        return is_string($token)
+            && is_string($expected)
+            && preg_match('/\A[a-f0-9]{64}\z/D', $expected) === 1
+            && hash_equals($expected, $token);
     }
 }
