@@ -22,7 +22,7 @@ foreach (['vi', 'en'] as $catalogLocale) {
 }
 localeCheck($vi !== [] && $en !== [], 'Both translation catalogs must load.');
 localeCheck(isset($vi['Apply'], $en['Apply']) && $vi['Apply'] === 'Áp dụng' && $en['Apply'] === 'Apply', 'Language switcher action must be translated in both catalogs.');
-foreach (['account.profile.updated','account.password.changed','user.status.changed','user.role.changed','active','pending','suspended','banned','member','admin','super_admin','NO ROLE'] as $adminKey) {
+foreach (['account.profile.updated','account.password.changed','user.status.changed','user.role.changed','ci.audit.test','active','pending','suspended','banned','member','admin','super_admin','NO ROLE'] as $adminKey) {
     localeCheck(isset($vi[$adminKey], $en[$adminKey]) && $vi[$adminKey] !== '' && $en[$adminKey] !== '', 'Admin state/audit label must be translated in both catalogs: ' . $adminKey);
 }
 localeCheck(App\Core\Localization::current() === 'vi', 'Vietnamese must be the default locale.');
