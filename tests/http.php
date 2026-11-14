@@ -222,6 +222,9 @@ try {
     $verifyReplay = $request('POST', '/verify-email', http_build_query(['_csrf' => $verifyCsrf, 'token' => $verifyToken]), $cookie);
     httpCheck(str_contains($verifyReplay['body'], 'Link unavailable'), 'Email verification token replay must be rejected over HTTP.');
 
+    // Recipient preference must control system email independently of browser locale.
+    $pdo->prepare("UPDATE user_profiles SET language = 'vi' WHERE user_id = (SELECT id FROM users WHERE email = :email)")
+        ->execute(['email' => $flowEmail]);
     $forgotPage = $request('GET', '/forgot-password', '', $cookie);
     $forgotCsrf = '';
     if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $forgotPage['body'], $match)) {
@@ -230,7 +233,7 @@ try {
     $forgotResponse = $request('POST', '/forgot-password', http_build_query(['_csrf' => $forgotCsrf, 'email' => $flowEmail]), $cookie);
     httpCheck($forgotResponse['status'] === 200 && str_contains($forgotResponse['body'], 'If an active account matches'), 'Password recovery must return the generic HTTP response.');
     $mailLog = (string)file_get_contents($mailLogPath);
-    httpCheck(str_contains($mailLog, 'Use this one-time link to reset your password'), 'Password reset email must use the recipient English preference.');
+    httpCheck(str_contains($mailLog, 'Sử dụng liên kết một lần sau đây để đặt lại mật khẩu'), 'Password reset email must use the recipient saved Vietnamese preference even when the browser is English.');
     httpCheck(preg_match('/reset-password\?token=([a-f0-9]{64})/', $mailLog, $resetMatch) === 1, 'Password recovery must send a one-time reset link through the mail adapter.');
     $resetToken = $resetMatch[1];
     $resetPage = $request('GET', '/reset-password?token=' . rawurlencode($resetToken), '', $cookie);
@@ -250,6 +253,7 @@ try {
     $flowUser->execute(['email' => $flowEmail]);
     $flowUserRow = $flowUser->fetch();
     httpCheck($flowUserRow && $flowUserRow['status'] === 'active' && password_verify($newFlowPassword, $flowUserRow['password_hash']), 'HTTP password reset must persist the new password for the verified account.');
+    $pdo->prepare("UPDATE user_profiles SET language = 'en' WHERE user_id = :id")->execute(['id' => (int)$flowUserRow['id']]);
     $flowRole = $pdo->prepare(
         "SELECT r.role_key FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id"
     );
