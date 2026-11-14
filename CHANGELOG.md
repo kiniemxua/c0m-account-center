@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Extend localization regression coverage to audit event keys and verify audit labels plus metadata/IP output escaping.
+
 - Add registration with pending accounts, email verification and hashed single-use tokens.
 - Add password recovery with expiring single-use reset tokens and session revocation.
 - Add external SMTP provider abstraction and a development-only mail log provider.
