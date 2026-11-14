@@ -41,39 +41,47 @@ if (file_put_contents($mailConfigPath, "<?php return ['mode' => 'development_log
     throw new RuntimeException('Could not create temporary development mail configuration.');
 }
 
-$pdo = new PDO(
-    sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $dbConfig['host'], $dbConfig['port'], $dbConfig['name']),
-    $dbConfig['user'],
-    $dbConfig['password'],
-    [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
-);
-$testEmail = 'http-' . bin2hex(random_bytes(5)) . '@example.test';
-$testPassword = 'HttpTestPassword-456';
-$pdo->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES (:email, :hash, 'HTTP test member', 'active', NOW())")
-    ->execute(['email' => $testEmail, 'hash' => password_hash($testPassword, PASSWORD_DEFAULT)]);
-$testUserId = (int)$pdo->lastInsertId();
-$pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:id)')->execute(['id' => $testUserId]);
-$pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'")->execute(['id' => $testUserId]);
-
-$portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-if (!$portSocket) {
-    @unlink($dbConfigPath);
-    throw new RuntimeException('Could not reserve a local HTTP test port.');
-}
-$address = stream_socket_get_name($portSocket, false);
-$port = (int)substr(strrchr($address, ':'), 1);
-fclose($portSocket);
-
-$command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public', BASE_PATH . '/public/index.php'];
-$process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-if (!is_resource($process)) {
-    @unlink($dbConfigPath);
-    throw new RuntimeException('Could not start the PHP HTTP test server.');
-}
-fclose($pipes[0]);
+$pdo = null;
+$testUserId = null;
 $flowEmail = null;
+$process = null;
+$pipes = [];
 
 try {
+    $pdo = new PDO(
+        sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $dbConfig['host'], $dbConfig['port'], $dbConfig['name']),
+        $dbConfig['user'],
+        $dbConfig['password'],
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+    );
+    $testEmail = 'http-' . bin2hex(random_bytes(5)) . '@example.test';
+    $testPassword = 'HttpTestPassword-456';
+    $pdo->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES (:email, :hash, 'HTTP test member', 'active', NOW())")
+        ->execute(['email' => $testEmail, 'hash' => password_hash($testPassword, PASSWORD_DEFAULT)]);
+    $testUserId = (int)$pdo->lastInsertId();
+    $pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:id)')->execute(['id' => $testUserId]);
+    $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'")->execute(['id' => $testUserId]);
+
+    $portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+    if (!$portSocket) {
+        throw new RuntimeException('Could not reserve a local HTTP test port.');
+    }
+    $address = stream_socket_get_name($portSocket, false);
+    fclose($portSocket);
+    if (!is_string($address) || !str_contains($address, ':')) {
+        throw new RuntimeException('Could not determine the local HTTP test port.');
+    }
+    $port = (int)substr(strrchr($address, ':'), 1);
+
+    $command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public', BASE_PATH . '/public/index.php'];
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    if (!is_resource($process)) {
+        throw new RuntimeException('Could not start the PHP HTTP test server.');
+    }
+    if (isset($pipes[0]) && is_resource($pipes[0])) {
+        fclose($pipes[0]);
+    }
+
     $base = 'http://127.0.0.1:' . $port;
     $request = static function (string $method, string $path, string $body = '', string $cookie = '', bool $trustedHttps = true) use ($base): array {
         $headers = ["Connection: close"];
@@ -433,19 +441,27 @@ try {
 
     echo "HTTP router integration tests passed.\n";
 } finally {
-    proc_terminate($process);
+    if (is_resource($process)) {
+        proc_terminate($process);
+    }
     foreach ([1, 2] as $index) {
         if (isset($pipes[$index]) && is_resource($pipes[$index])) {
             fclose($pipes[$index]);
         }
     }
-    proc_close($process);
+    if (is_resource($process)) {
+        proc_close($process);
+    }
     @unlink($dbConfigPath);
     @unlink($appConfigPath);
     @unlink($mailConfigPath);
     @unlink($mailLogPath);
-    if (is_string($flowEmail)) {
-        $pdo->prepare('DELETE FROM users WHERE email = :email')->execute(['email' => $flowEmail]);
+    if ($pdo instanceof PDO) {
+        if (is_string($flowEmail)) {
+            $pdo->prepare('DELETE FROM users WHERE email = :email')->execute(['email' => $flowEmail]);
+        }
+        if (is_int($testUserId)) {
+            $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
+        }
     }
-    $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
 }
