@@ -12,31 +12,34 @@ $pdo = new PDO(
     getenv('DB_PASSWORD') ?: '',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
 );
-$emails = ['rbac-actor-' . bin2hex(random_bytes(4)) . '@example.test', 'rbac-target-' . bin2hex(random_bytes(4)) . '@example.test'];
 $ids = [];
-foreach ($emails as $email) {
-    $pdo->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES (:email, :hash, 'RBAC concurrency test', 'active', NOW())")
-        ->execute(['email' => $email, 'hash' => password_hash('RbacTestPassword-123', PASSWORD_DEFAULT)]);
-    $ids[] = (int)$pdo->lastInsertId();
-    $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'")
-        ->execute(['id' => $ids[array_key_last($ids)]]);
-}
-$roleCount = $pdo->prepare(
-    "SELECT COUNT(*) FROM users u
-     INNER JOIN user_roles ur ON ur.user_id = u.id
-     INNER JOIN roles r ON r.id = ur.role_id
-     WHERE u.id IN (?, ?) AND u.status = 'active' AND r.role_key = 'super_admin'"
-);
-$roleCount->execute($ids);
-if ((int)$roleCount->fetchColumn() !== 2) {
-    throw new RuntimeException('Concurrency fixture must contain two active Super Admin accounts.');
-}
 $marker = sys_get_temp_dir() . '/c0m-rbac-' . bin2hex(random_bytes(6));
 $process1 = null;
 $process2 = null;
 $pipes1 = [];
 $pipes2 = [];
 try {
+    $emails = ['rbac-actor-' . bin2hex(random_bytes(4)) . '@example.test', 'rbac-target-' . bin2hex(random_bytes(4)) . '@example.test'];
+    foreach ($emails as $email) {
+        $pdo->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES (:email, :hash, 'RBAC concurrency test', 'active', NOW())")
+            ->execute(['email' => $email, 'hash' => password_hash('RbacTestPassword-123', PASSWORD_DEFAULT)]);
+        $ids[] = (int)$pdo->lastInsertId();
+        $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'")
+            ->execute(['id' => $ids[array_key_last($ids)]]);
+    }
+    if (count($ids) !== 2) {
+        throw new RuntimeException('Concurrency fixture must contain two test accounts.');
+    }
+    $roleCount = $pdo->prepare(
+        "SELECT COUNT(*) FROM users u
+         INNER JOIN user_roles ur ON ur.user_id = u.id
+         INNER JOIN roles r ON r.id = ur.role_id
+         WHERE u.id IN (?, ?) AND u.status = 'active' AND r.role_key = 'super_admin'"
+    );
+    $roleCount->execute($ids);
+    if ((int)$roleCount->fetchColumn() !== 2) {
+        throw new RuntimeException('Concurrency fixture must contain two active Super Admin accounts.');
+    }
     $command1 = [PHP_BINARY, BASE_PATH . '/tests/rbac-lock-worker.php', (string)$ids[1], (string)$ids[0], 'hold', $marker];
     $process1 = proc_open($command1, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes1);
     if (!is_resource($process1)) {
@@ -110,6 +113,9 @@ try {
         }
     }
     @unlink($marker);
-    $delete = $pdo->prepare('DELETE FROM users WHERE id IN (?, ?)');
-    $delete->execute($ids);
+    if ($ids !== []) {
+        $placeholders = implode(', ', array_fill(0, count($ids), '?'));
+        $delete = $pdo->prepare('DELETE FROM users WHERE id IN (' . $placeholders . ')');
+        $delete->execute($ids);
+    }
 }
