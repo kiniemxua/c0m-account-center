@@ -43,6 +43,18 @@ App\Core\Localization::set('vi');
 $missingVi = array_diff(array_keys($en), array_keys($vi));
 $missingEn = array_diff(array_keys($vi), array_keys($en));
 localeCheck($missingVi === [] && $missingEn === [], 'Translation catalogs must have identical key coverage.');
+$placeholderNames = static function (string $text): array {
+    preg_match_all('/\\{([a-zA-Z0-9_]+)\\}/', $text, $matches);
+    $names = array_values(array_unique($matches[1] ?? []));
+    sort($names);
+    return $names;
+};
+foreach (array_keys($vi) as $translationKey) {
+    localeCheck(
+        $placeholderNames((string)$vi[$translationKey]) === $placeholderNames((string)$en[$translationKey]),
+        'Vietnamese and English translations must preserve the same placeholders: ' . $translationKey
+    );
+}
 $partialSource = file_get_contents(BASE_PATH . '/app/Views/partials/language-switcher.php');
 localeCheck($partialSource !== false && str_contains($partialSource, 'window.C0M_I18N') && str_contains($partialSource, 'sessionStorage') && str_contains($partialSource, 'formIndex') && str_contains($partialSource, "'password'"), 'JavaScript must receive localized messages and preserve non-password form state.');
 $bootstrapSource = file_get_contents(BASE_PATH . '/app/Core/bootstrap.php');
