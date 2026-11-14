@@ -22,7 +22,9 @@ final class Localization
                 if (is_string($stored) && in_array($stored, self::SUPPORTED, true)) {
                     $locale = $stored;
                     $_SESSION['locale'] = $stored;
-                    self::writeGuestCookie($stored);
+                    if (self::valid($_COOKIE['c0m_lang'] ?? null) !== $stored) {
+                        self::writeGuestCookie($stored);
+                    }
                 } else {
                     // A signed-in account without a valid saved preference must
                     // use the system default, never inherit a stale guest cookie.
