@@ -365,6 +365,24 @@ try {
     $authCookie .= '; ' . $memberLocaleCookie;
     $englishDashboard = $request('GET', '/dashboard', '', $authCookie);
     httpCheck($englishDashboard['status'] === 200 && str_contains($englishDashboard['body'], '<html lang="en">'), 'The saved member language must override prior session and cookie state.');
+    $memberSwitchBackCsrf = '';
+    if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $englishDashboard['body'], $match)) {
+        $memberSwitchBackCsrf = $match[1];
+    }
+    $memberSwitchBack = $request('POST', '/language', http_build_query([
+        '_csrf' => $memberSwitchBackCsrf, 'language' => 'vi', 'return_to' => '/dashboard',
+    ]), $authCookie);
+    httpCheck($memberSwitchBack['status'] === 303, 'A member must be able to switch the saved preference back to Vietnamese.');
+    $memberVietnameseDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck($memberVietnameseDashboard['status'] === 200 && str_contains($memberVietnameseDashboard['body'], '<html lang="vi">'), 'The Vietnamese account preference must override a stale English cookie/session.');
+    $memberPreference->execute(['id' => $testUserId]);
+    httpCheck($memberPreference->fetchColumn() === 'vi', 'Switching back to Vietnamese must persist the account preference.');
+    $memberLocaleCookieVi = '';
+    foreach ($memberSwitchBack['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_lang=vi') === 0) $memberLocaleCookieVi = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+    }
+    httpCheck($memberLocaleCookieVi === 'c0m_lang=vi', 'Switching back to Vietnamese must synchronize the guest fallback cookie.');
+    $authCookie .= '; ' . $memberLocaleCookieVi;
     // Promote this isolated fixture to Admin and exercise the real admin locale flow.
     $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'admin'")
         ->execute(['id' => $testUserId]);
