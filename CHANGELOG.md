@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Add a guarded local test-suite runner that checks PHP extensions and a disposable `c0m_test` database before executing the same lint and integration checks used by CI.
 - Extend the untranslated-text regression scan to shared view partials and avoid resending an already-synchronized authenticated locale cookie on every page request.
 - Extend localization regression tests with a static HTML text-node scan across all public/account/admin views and the installer to prevent untranslated copy from being added outside the catalogs.
 - Fix the catalog duplicate-key audit so it scans every declaration, including multiple entries on one line; remove repeated entries and verify 223 unique keys in each catalog with matching key sets.
