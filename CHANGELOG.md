@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Extend localization regression tests with a static HTML text-node scan across all public/account/admin views and the installer to prevent untranslated copy from being added outside the catalogs.
 - Fix the catalog duplicate-key audit so it scans every declaration, including multiple entries on one line; remove repeated entries and verify 223 unique keys in each catalog with matching key sets.
 - Correct the HTTP admin-locale regression expectation after the fixture switches its saved account language back to Vietnamese.
 - Add HTTP integration coverage for authenticated English-to-Vietnamese switching, account preference persistence, and guest-cookie synchronization.
