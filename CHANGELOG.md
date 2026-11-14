@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Harden the Super Admin concurrency test so partially created users/roles are still removed if fixture setup or worker startup fails before the race begins.
 - Make the local runner remove its test-generated database/app/mail configuration, installer lock and development mail log on every exit path after verifying those paths were absent at startup.
 - Make the local test runner reject a non-empty `c0m_test` database before running; the installer suite creates persistent schema objects, so reruns now require an explicitly fresh disposable database instead of failing midway with misleading fixture errors.
 - Harden HTTP and installer test setup/finally paths so early database, port or server failures still remove temporary configuration, close processes and clean created fixtures; restore the trusted-proxy fixture before the installer existing-account recovery scenario.
