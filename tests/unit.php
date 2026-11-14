@@ -26,6 +26,12 @@ check(strlen($token) === 64, 'CSRF token must contain 32 random bytes encoded as
 check(App\Core\Csrf::verify($token), 'The issued CSRF token should validate.');
 check(!App\Core\Csrf::verify(str_repeat('0', 64)), 'A different CSRF token must be rejected.');
 check(!App\Core\Csrf::verify(null), 'A missing CSRF token must be rejected.');
+check(!App\Core\Csrf::verify([]), 'An array CSRF token must be rejected without a type error.');
+check(!App\Core\Csrf::verify(new stdClass()), 'An object CSRF token must be rejected without a type error.');
+$_SESSION['_csrf'] = ['malformed'];
+$recoveredToken = App\Core\Csrf::token();
+check(is_string($recoveredToken) && strlen($recoveredToken) === 64, 'A malformed stored CSRF value must be replaced with a valid token.');
+check(App\Core\Csrf::verify($recoveredToken), 'The regenerated CSRF token must validate.');
 session_destroy();
 
 // Forwarded headers from arbitrary clients must never enable Secure-cookie trust.
