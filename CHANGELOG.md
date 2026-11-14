@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Make the local test runner reject a non-empty `c0m_test` database before running; the installer suite creates persistent schema objects, so reruns now require an explicitly fresh disposable database instead of failing midway with misleading fixture errors.
 - Harden HTTP and installer test setup/finally paths so early database, port or server failures still remove temporary configuration, close processes and clean created fixtures; restore the trusted-proxy fixture before the installer existing-account recovery scenario.
 - Add a guarded local test-suite runner that checks PHP extensions and a disposable `c0m_test` database before executing the same lint and integration checks used by CI.
 - Extend the untranslated-text regression scan to shared view partials and avoid resending an already-synchronized authenticated locale cookie on every page request.
