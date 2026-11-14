@@ -26,24 +26,30 @@ $configPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
 $lockPath = BASE_PATH . '/storage/install.lock';
 installerCheck(!is_file($configPath) && !is_file($appConfigPath) && !is_file($lockPath), 'Installer test requires a clean configuration and install lock.');
-file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX);
 $limitedUser = 'c0m_installer_limited';
 $limitedPassword = 'InstallerLimitedPassword-OnlyForCI';
-$root->exec("CREATE USER IF NOT EXISTS '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
-$root->exec("GRANT SELECT, INSERT, UPDATE, CREATE, INDEX, REFERENCES ON `{$dbName}`.* TO '{$limitedUser}'@'%'");
-
-$portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-installerCheck(is_resource($portSocket), 'Could not reserve an installer HTTP port.');
-$address = stream_socket_get_name($portSocket, false);
-$port = (int)substr(strrchr($address, ':'), 1);
-fclose($portSocket);
-
-$command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public'];
-$process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-installerCheck(is_resource($process), 'Could not start installer HTTP server.');
-fclose($pipes[0]);
+$process = null;
+$pipes = [];
 
 try {
+    installerCheck(file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) !== false, 'Could not create trusted-proxy test configuration.');
+    $root->exec("CREATE USER IF NOT EXISTS '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
+    $root->exec("GRANT SELECT, INSERT, UPDATE, CREATE, INDEX, REFERENCES ON `{$dbName}`.* TO '{$limitedUser}'@'%'");
+
+    $portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+    installerCheck(is_resource($portSocket), 'Could not reserve an installer HTTP port.');
+    $address = stream_socket_get_name($portSocket, false);
+    fclose($portSocket);
+    installerCheck(is_string($address) && str_contains($address, ':'), 'Could not determine installer HTTP port.');
+    $port = (int)substr(strrchr($address, ':'), 1);
+
+    $command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public'];
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    installerCheck(is_resource($process), 'Could not start installer HTTP server.');
+    if (isset($pipes[0]) && is_resource($pipes[0])) {
+        fclose($pipes[0]);
+    }
+
     $base = 'http://127.0.0.1:' . $port;
     $request = static function (string $method, string $body = '', string $cookie = '', bool $trustedHttps = true, string $path = '/installer/') use ($base): array {
         $headers = ['Connection: close'];
@@ -181,6 +187,7 @@ try {
     @unlink($configPath);
     @unlink($appConfigPath);
     @unlink($lockPath);
+    installerCheck(file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) !== false, 'Could not restore trusted-proxy configuration for the existing-account recovery test.');
 
     // Existing accounts may only be promoted after proving possession of their password.
     $memberPassword = 'ExistingMemberPassword-456';
@@ -214,14 +221,19 @@ try {
 
     echo "Installer recovery integration tests passed.\n";
 } finally {
-    proc_terminate($process);
+    if (is_resource($process)) {
+        proc_terminate($process);
+    }
     foreach ([1, 2] as $index) {
         if (isset($pipes[$index]) && is_resource($pipes[$index])) {
             fclose($pipes[$index]);
         }
     }
-    proc_close($process);
+    if (is_resource($process)) {
+        proc_close($process);
+    }
     @unlink($configPath);
+    @unlink($appConfigPath);
     @unlink($lockPath);
     try {
         $root->exec("DROP USER IF EXISTS '{$limitedUser}'@'%'");
