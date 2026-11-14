@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Correct the HTTP admin-locale regression expectation after the fixture switches its saved account language back to Vietnamese.
 - Add HTTP integration coverage for authenticated English-to-Vietnamese switching, account preference persistence, and guest-cookie synchronization.
 
 - Expand integration checks for account language precedence over stale guest session/cookie values and invalid stored locale fallback.
