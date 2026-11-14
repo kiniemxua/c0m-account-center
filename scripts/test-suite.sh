@@ -55,6 +55,18 @@ if ($count !== 0) {
 echo "Connected to empty disposable database: " . getenv("DB_NAME") . PHP_EOL;
 '
 
+# The runner has already verified that these runtime paths did not exist.
+# Remove test-generated secrets/configuration even when an individual test fails.
+cleanup_runtime_files() {
+    rm -f -- \
+        config/database.php \
+        config/app.php \
+        config/mail.php \
+        storage/install.lock \
+        storage/mail.log
+}
+trap cleanup_runtime_files EXIT
+
 echo "== PHP syntax validation =="
 while IFS= read -r -d '' file; do
     php -l "$file"
