@@ -61,6 +61,10 @@ $bootstrapSource = file_get_contents(BASE_PATH . '/app/Core/bootstrap.php');
 localeCheck($bootstrapSource !== false && str_contains($bootstrapSource, "'/lang/'") && str_contains($bootstrapSource, 'c0m_lang'), 'HTTPS bootstrap errors must use the selected language catalog.');
 $installerSource = file_get_contents(BASE_PATH . '/public/installer/index.php');
 localeCheck($installerSource !== false && str_contains($installerSource, '$installerLocale') && str_contains($installerSource, '$installerT'), 'Installer must use the language catalog and locale switcher.');
+$installerStatic = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $installerSource) ?? $installerSource;
+$installerStatic = preg_replace('~<script\\b[^>]*>.*?</script>|<style\\b[^>]*>.*?</style>|<[^>]+>~is', ' ', $installerStatic) ?? $installerStatic;
+$installerStatic = str_ireplace('c0m.me', '', html_entity_decode($installerStatic, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+localeCheck(!preg_match('/[A-Za-z]{2,}/', $installerStatic), 'Untranslated static HTML text remains in the installer: ' . trim($installerStatic));
 
 $controllerFiles = glob(BASE_PATH . '/app/Controllers/*.php') ?: [];
 foreach ($controllerFiles as $controllerFile) {
@@ -103,6 +107,9 @@ foreach ($viewFiles as $viewFile) {
     $viewSource = file_get_contents($viewFile);
     localeCheck($viewSource !== false && str_contains($viewSource, 'Localization::current()'), 'Every application page must declare the active locale: ' . basename($viewFile));
     $plainHtml = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $viewSource) ?? $viewSource;
+    $staticText = preg_replace('~<script\\b[^>]*>.*?</script>|<style\\b[^>]*>.*?</style>|<[^>]+>~is', ' ', $plainHtml) ?? $plainHtml;
+    $staticText = str_ireplace('c0m.me', '', html_entity_decode($staticText, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    localeCheck(!preg_match('/[A-Za-z]{2,}/', $staticText), 'Untranslated static HTML text remains in ' . basename($viewFile) . ': ' . trim($staticText));
     foreach (['New here?', 'Create account</button>', 'User administration — c0m.me', 'Forgot password — c0m.me', 'Reset password — c0m.me', 'Verify email — c0m.me', 'Your digital home</title>', 'App Hub</h2>', 'Last activity:', 'Expires:', 'placeholder="optional"', 'Center</footer>'] as $rawCopy) { localeCheck(!str_contains($plainHtml, $rawCopy), 'Hardcoded interface copy remains in ' . basename($viewFile) . ': ' . $rawCopy); }
     localeCheck(!str_contains($viewSource, 'Localization::translate($error)') && !str_contains($viewSource, 't($error)'), 'Views must not translate already-localized controller messages twice: ' . basename($viewFile));
     localeCheck(str_contains($viewSource, "partials/language-switcher.php"), 'Every application page must expose the language switcher: ' . basename($viewFile));
