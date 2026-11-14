@@ -96,6 +96,8 @@ localeCheck($authorizationSource !== false && str_contains($authorizationSource,
 $routerSource = file_get_contents(BASE_PATH . '/public/index.php');
 localeCheck($routerSource !== false && str_contains($routerSource, "'/admin/audit'"), 'The audit log route must be registered.');
 localeCheck(is_file(BASE_PATH . '/app/Views/admin-audit.php'), 'The localized audit log view must exist.');
+$auditView = file_get_contents(BASE_PATH . '/app/Views/admin-audit.php');
+localeCheck($auditView !== false && str_contains($auditView, "\\App\\Core\\t((string)$event['action'])") && str_contains($auditView, 'htmlspecialchars((string)$event[\'metadata\']') && str_contains($auditView, 'htmlspecialchars($event[\'ip_display\']'), 'Audit action labels and untrusted metadata/IP values must be localized and HTML-escaped.');
 $viewFiles = glob(BASE_PATH . '/app/Views/*.php') ?: [];
 foreach ($viewFiles as $viewFile) {
     $viewSource = file_get_contents($viewFile);
