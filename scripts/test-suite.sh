@@ -43,8 +43,16 @@ $dsn = sprintf(
     getenv("DB_PORT"),
     getenv("DB_NAME")
 );
-new PDO($dsn, getenv("DB_USER"), getenv("DB_PASSWORD"), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-echo "Database connection OK: " . getenv("DB_NAME") . PHP_EOL;
+$pdo = new PDO($dsn, getenv("DB_USER"), getenv("DB_PASSWORD"), [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+$count = (int)$pdo->query(
+    "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = " . $pdo->quote(getenv("DB_NAME"))
+)->fetchColumn();
+if ($count !== 0) {
+    fwrite(STDERR, "Refusing to run against a non-empty c0m_test database ($count tables found).\\n");
+    fwrite(STDERR, "Create a fresh, empty disposable database named c0m_test and retry.\\n");
+    exit(2);
+}
+echo "Connected to empty disposable database: " . getenv("DB_NAME") . PHP_EOL;
 '
 
 echo "== PHP syntax validation =="
