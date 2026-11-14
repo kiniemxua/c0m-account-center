@@ -29,3 +29,13 @@ Use `\\App\\Core\\t('English source phrase', ['name' => $value])` in PHP views f
 ## Tests
 
 Run `php tests/localization.php` for catalog parity, UTF-8, fallback, placeholders and email copy. Run `php tests/http.php` with a disposable MariaDB/MySQL database to exercise guest/member/admin language switching and the authentication HTTP flows. The integration suite applies migrations against MariaDB/MySQL, checks the `vi` default, backfills missing legacy profile rows without overwriting existing preferences, re-runs the migration to verify idempotency, and checks that the authenticated account preference overrides a guest/session choice. The HTTP suite exercises guest, member and administrator language switching, cookie security attributes, CSRF rejection, redirect validation, and preference persistence through login/logout, and recipient-profile locale selection for password-reset email. Redirect tests include raw and percent-encoded control bytes; the controller rejects raw control bytes before URL parsing and caps return targets at 2,048 bytes. The admin audit-log screen localizes known event labels but leaves metadata, IDs and other recorded data unchanged.
+
+### Full local test run
+
+Use a dedicated disposable MariaDB/MySQL database named `c0m_test`. The local runner refuses any other database name and refuses to overwrite existing runtime configuration or install-lock files. It checks PHP 8.2+ and the required extensions, performs repository-wide PHP lint, then runs the same unit, localization, SMTP, installer, database integration, RBAC concurrency and HTTP suites as CI.
+
+```bash
+DB_HOST=127.0.0.1 DB_PORT=3306 DB_NAME=c0m_test DB_USER=root DB_PASSWORD='your-test-db-password' bash scripts/test-suite.sh
+```
+
+Do not point this test suite at a production or live account database. The installer and integration tests create and remove disposable fixtures and apply migrations.
