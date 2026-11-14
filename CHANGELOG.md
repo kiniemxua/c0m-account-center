@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Harden CSRF handling so array/object request values are rejected without type errors and malformed stored session tokens are regenerated; add unit regression coverage.
 - Harden the Super Admin concurrency test so partially created users/roles are still removed if fixture setup or worker startup fails before the race begins.
 - Make the local runner remove its test-generated database/app/mail configuration, installer lock and development mail log on every exit path after verifying those paths were absent at startup.
 - Make the local test runner reject a non-empty `c0m_test` database before running; the installer suite creates persistent schema objects, so reruns now require an explicitly fresh disposable database instead of failing midway with misleading fixture errors.
