@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Add HTTP integration coverage for authenticated English-to-Vietnamese switching, account preference persistence, and guest-cookie synchronization.
+
 - Expand integration checks for account language precedence over stale guest session/cookie values and invalid stored locale fallback.
 
 - Extend localization regression coverage to audit event keys and verify audit labels plus metadata/IP output escaping.
