@@ -114,6 +114,17 @@ foreach ($viewFiles as $viewFile) {
     localeCheck(!str_contains($viewSource, 'Localization::translate($error)') && !str_contains($viewSource, 't($error)'), 'Views must not translate already-localized controller messages twice: ' . basename($viewFile));
     localeCheck(str_contains($viewSource, "partials/language-switcher.php"), 'Every application page must expose the language switcher: ' . basename($viewFile));
 }
+
+$partialFiles = glob(BASE_PATH . '/app/Views/partials/*.php') ?: [];
+foreach ($partialFiles as $partialFile) {
+    $partialSource = file_get_contents($partialFile);
+    localeCheck($partialSource !== false, 'View partial source must be readable: ' . basename($partialFile));
+    $partialHtml = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $partialSource) ?? $partialSource;
+    $partialText = preg_replace('~<script\\b[^>]*>.*?</script>|<style\\b[^>]*>.*?</style>|<[^>]+>~is', ' ', $partialHtml) ?? $partialHtml;
+    $partialText = str_ireplace('c0m.me', '', html_entity_decode($partialText, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    localeCheck(!preg_match('/[A-Za-z]{2,}/', $partialText), 'Untranslated static HTML text remains in partial ' . basename($partialFile) . ': ' . trim($partialText));
+}
+
 localeCheck(str_contains($vi['Welcome back'] ?? '', 'Chào mừng'), 'Vietnamese UTF-8 text must be preserved.');
 localeCheck(($en['Welcome back'] ?? '') === 'Welcome back', 'English catalog must contain English copy.');
 localeCheck(App\Core\Localization::translate('unknown.internal.key') === 'Thông báo hệ thống', 'Vietnamese fallback must be localized and must not expose raw keys.');
