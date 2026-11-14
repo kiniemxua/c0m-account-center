@@ -13,7 +13,7 @@ $en = App\Core\Localization::all('en');
 $catalogKeys = static function (string $locale): array {
     $source = file_get_contents(BASE_PATH . '/lang/' . $locale . '.php');
     localeCheck($source !== false, 'Translation catalog source must be readable: ' . $locale);
-    preg_match_all('~^\\s*([\'"])(.*?)\\1\\s*=>~m', $source, $matches);
+    preg_match_all('~(?:^|,)\\s*([\'"])(.*?)\\1\\s*=>~m', $source, $matches);
     return $matches[2] ?? [];
 };
 foreach (['vi', 'en'] as $catalogLocale) {
