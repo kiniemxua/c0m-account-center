@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Expand integration checks for account language precedence over stale guest session/cookie values and invalid stored locale fallback.
+
 - Extend localization regression coverage to audit event keys and verify audit labels plus metadata/IP output escaping.
 
 - Add registration with pending accounts, email verification and hashed single-use tokens.
