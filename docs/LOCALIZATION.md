@@ -32,7 +32,7 @@ Run `php tests/localization.php` for catalog parity, UTF-8, fallback, placeholde
 
 ### Full local test run
 
-Use a dedicated disposable MariaDB/MySQL database named `c0m_test`. The local runner refuses any other database name and refuses to overwrite existing runtime configuration or install-lock files. It checks PHP 8.2+ and the required extensions, performs repository-wide PHP lint, then runs the same unit, localization, SMTP, installer, database integration, RBAC concurrency and HTTP suites as CI.
+Use a dedicated, newly created and empty disposable MariaDB/MySQL database named `c0m_test`. The local runner refuses any other database name, checks that the database contains zero tables, and refuses to overwrite existing runtime configuration or install-lock files. The installer test intentionally creates the schema; a later rerun therefore requires dropping and recreating the disposable database first. It checks PHP 8.2+ and the required extensions, performs repository-wide PHP lint, then runs the same unit, localization, SMTP, installer, database integration, RBAC concurrency and HTTP suites as CI.
 
 ```bash
 DB_HOST=127.0.0.1 DB_PORT=3306 DB_NAME=c0m_test DB_USER=root DB_PASSWORD='your-test-db-password' bash scripts/test-suite.sh
