@@ -682,6 +682,73 @@ try {
         && array_key_exists('authorization_revision', $userinfoData),
         'OIDC userinfo must return only scoped member claims and the authorization revision.');
 
+    $planKey = 'http-pro-' . bin2hex(random_bytes(4));
+    $pdo->prepare(
+        "INSERT INTO subscription_plans
+            (plan_key, name, description, price_minor, currency, billing_interval, features, quotas, status)
+         VALUES (:key, 'HTTP Pro', 'HTTP webhook test plan', 1200, 'USD', 'month', :features, :quotas, 'active')"
+    )->execute([
+        'key' => $planKey,
+        'features' => json_encode(['forum_access' => true, 'custom_domain' => true], JSON_THROW_ON_ERROR),
+        'quotas' => json_encode(['subdomains' => 10, 'storage_mb' => 1024], JSON_THROW_ON_ERROR),
+    ]);
+    $paymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventBody = json_encode([
+        'id' => $paymentEventId,
+        'type' => 'subscription.activated',
+        'data' => [
+            'user_id' => $testUserId,
+            'plan_key' => $planKey,
+            'provider_subscription_id' => 'sub-' . bin2hex(random_bytes(8)),
+            'provider_customer_id' => 'cus-http-test',
+            'status' => 'active',
+            'current_period_start' => gmdate('c'),
+            'current_period_end' => gmdate('c', time() + 30 * 86400),
+            'cancel_at_period_end' => false,
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $paymentTimestamp = (string)time();
+    $paymentSignature = hash_hmac('sha256', $paymentTimestamp . '.' . $paymentEventBody, $paymentTestSecret);
+    $paymentHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentTimestamp . ',v1=' . $paymentSignature,
+    ];
+    $paymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, $paymentHeaders);
+    httpCheck($paymentWebhook['status'] === 200 && str_contains($paymentWebhook['body'], '"ok":true'), 'A correctly signed subscription webhook must be accepted.');
+    $subscriptionLookup = $pdo->prepare('SELECT id, status FROM subscriptions WHERE user_id = :user AND provider = :provider');
+    $subscriptionLookup->execute(['user' => $testUserId, 'provider' => 'generic']);
+    $subscriptionRow = $subscriptionLookup->fetch();
+    httpCheck($subscriptionRow && $subscriptionRow['status'] === 'active', 'A verified subscription webhook must activate the member subscription.');
+    $entitlementRows = $pdo->prepare("SELECT entitlement_key, entitlement_value FROM user_entitlements WHERE user_id = :user AND status = 'active'");
+    $entitlementRows->execute(['user' => $testUserId]);
+    $entitlementMap = [];
+    foreach ($entitlementRows->fetchAll() as $entitlementRow) {
+        $entitlementMap[$entitlementRow['entitlement_key']] = json_decode($entitlementRow['entitlement_value'], true);
+    }
+    httpCheck(($entitlementMap['feature.forum_access'] ?? false) === true
+        && ($entitlementMap['quota.subdomains'] ?? null) === 10
+        && ($entitlementMap['quota.storage_mb'] ?? null) === 1024,
+        'Subscription plan features and quotas must become member entitlements.');
+    $entitlementApi = $request('GET', '/api/v1/me/entitlements', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $entitlementApiData = json_decode($entitlementApi['body'], true);
+    httpCheck($entitlementApi['status'] === 200 && is_array($entitlementApiData)
+        && ($entitlementApiData['data']['entitlements']['feature.forum_access']['value'] ?? false) === true
+        && ($entitlementApiData['data']['entitlements']['quota.subdomains']['value'] ?? null) === 10,
+        'The scoped entitlement API must return the current member features and quotas.');
+    $duplicatePaymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, $paymentHeaders);
+    httpCheck($duplicatePaymentWebhook['status'] === 200 && str_contains($duplicatePaymentWebhook['body'], '"duplicate":true'),
+        'A repeated provider event must be idempotently acknowledged without reapplying entitlements.');
+    $outboxCount = $pdo->prepare('SELECT COUNT(*) FROM event_outbox WHERE event_key = :key');
+    $outboxCount->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
+    httpCheck((int)$outboxCount->fetchColumn() === 1, 'A processed payment webhook must create exactly one transactional outbox event.');
+    $badPaymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentTimestamp . ',v1=' . str_repeat('0', 64),
+    ]);
+    httpCheck($badPaymentWebhook['status'] === 401, 'An invalid payment webhook signature must be rejected.');
+
     $refreshResponse = $request('POST', '/oauth/token', http_build_query([
         'grant_type' => 'refresh_token',
         'client_id' => $oauthClientId,
