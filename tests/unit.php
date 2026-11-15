@@ -132,11 +132,11 @@ $previousKid = substr(hash('sha256', $previousDetails['key']), 0, 24);
 $previousPath = $previousDirectory . '/' . $previousKid . '.pem';
 check(file_put_contents($previousPath, $previousDetails['key'], LOCK_EX) !== false, 'A test previous public key must be persisted.');
 try {
-    $overlapJwks = App\\Core\\OidcSigner::jwks();
+    $overlapJwks = App\Core\OidcSigner::jwks();
     check(count(array_filter($overlapJwks['keys'], static fn(array $key): bool => ($key['kid'] ?? '') === $previousKid)) === 1,
         'JWKS must publish a previous public key during the overlap period.');
     touch($previousPath, time() - 86401);
-    $expiredJwks = App\\Core\\OidcSigner::jwks();
+    $expiredJwks = App\Core\OidcSigner::jwks();
     check(count(array_filter($expiredJwks['keys'], static fn(array $key): bool => ($key['kid'] ?? '') === $previousKid)) === 0,
         'JWKS must stop publishing previous keys after the 24-hour overlap.');
 } finally {
