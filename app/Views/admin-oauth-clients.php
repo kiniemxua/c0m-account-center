@@ -10,7 +10,7 @@
 <main class="shell">
 <nav class="nav">
 <a class="brand" href="/dashboard">c0m.me</a>
-<div><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a> · <a class="nav-link" href="/admin/groups"><?= \App\Core\t('Member groups') ?></a> · <a class="nav-link" href="/admin/applications"><?= \App\Core\t('Application registry') ?></a></div>
+<div class="admin-nav"><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a><a class="nav-link" href="/admin/groups"><?= \App\Core\t('Member groups') ?></a><a class="nav-link" href="/admin/applications"><?= \App\Core\t('Application registry') ?></a></div>
 </nav>
 <section class="hero compact">
 <span class="eyebrow"><?= \App\Core\t('ADMINISTRATION') ?></span>
@@ -19,7 +19,7 @@
 </section>
 <?php if ($error !== null): ?><div class="alert" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
 <?php if ($flash !== null): ?>
-<section class="auth-card">
+<section class="admin-panel">
 <h2><?= \App\Core\t('Client credentials created') ?></h2>
 <p><?= \App\Core\t('Copy and store the client secret now. It will not be shown again.') ?></p>
 <?php if (($flash['application_name'] ?? '') !== ''): ?><p><strong><?= htmlspecialchars((string)$flash['application_name'], ENT_QUOTES, 'UTF-8') ?></strong></p><?php endif; ?>
@@ -63,7 +63,7 @@
 </section>
 <section>
 <h2><?= \App\Core\t('Registered OAuth clients') ?></h2>
-<div class="feature-grid">
+<div class="admin-list">
 <?php foreach ($clients as $client): ?>
 <article>
 <b><?= htmlspecialchars((string)$client['application_name'], ENT_QUOTES, 'UTF-8') ?></b>
