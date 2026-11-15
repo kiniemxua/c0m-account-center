@@ -119,6 +119,31 @@ check(($jwks['keys'][0]['kty'] ?? null) === 'RSA' && ($jwks['keys'][0]['alg'] ??
     && ($jwks['keys'][0]['kid'] ?? null) === $jwtHeader['kid']
     && isset($jwks['keys'][0]['n'], $jwks['keys'][0]['e']), 'The public JWKS must publish the active RSA signing key.');
 
+// JWKS must retain a previous public key during the rotation overlap window.
+$previousDirectory = BASE_PATH . '/storage/oauth-signing-previous';
+$createdPreviousDirectory = !is_dir($previousDirectory);
+if ($createdPreviousDirectory) {
+    mkdir($previousDirectory, 0750, true);
+}
+$previousKey = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+$previousDetails = $previousKey ? openssl_pkey_get_details($previousKey) : false;
+check(is_array($previousDetails) && isset($previousDetails['key']), 'A test previous RSA key must be generated.');
+$previousKid = substr(hash('sha256', $previousDetails['key']), 0, 24);
+$previousPath = $previousDirectory . '/' . $previousKid . '.pem';
+check(file_put_contents($previousPath, $previousDetails['key'], LOCK_EX) !== false, 'A test previous public key must be persisted.');
+try {
+    $overlapJwks = App\\Core\\OidcSigner::jwks();
+    check(count(array_filter($overlapJwks['keys'], static fn(array $key): bool => ($key['kid'] ?? '') === $previousKid)) === 1,
+        'JWKS must publish a previous public key during the overlap period.');
+    touch($previousPath, time() - 86401);
+    $expiredJwks = App\\Core\\OidcSigner::jwks();
+    check(count(array_filter($expiredJwks['keys'], static fn(array $key): bool => ($key['kid'] ?? '') === $previousKid)) === 0,
+        'JWKS must stop publishing previous keys after the 24-hour overlap.');
+} finally {
+    @unlink($previousPath);
+    if ($createdPreviousDirectory) @rmdir($previousDirectory);
+}
+
 $webhookSecret = bin2hex(random_bytes(32));
 $webhookBody = '{"id":"evt_test","type":"payment.succeeded"}';
 $webhookTimestamp = (string)time();
