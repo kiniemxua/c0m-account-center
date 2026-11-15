@@ -278,4 +278,5 @@ return [
 'Redirect URIs' => 'Địa chỉ chuyển hướng',
 
 'Review active devices and recent sign-ins.' => 'Xem các thiết bị đang hoạt động và những lần đăng nhập gần đây.',
+'Create account' => 'Tạo tài khoản',
 ];
