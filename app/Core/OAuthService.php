@@ -166,8 +166,8 @@ final class OAuthService
                 // every remaining refresh token in its family before returning.
                 $pdo->prepare('UPDATE oauth_refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE family_id = :family AND revoked_at IS NULL')
                     ->execute(['family' => $row['family_id']]);
-                $pdo->prepare('UPDATE oauth_access_tokens SET revoked_at = UTC_TIMESTAMP() WHERE client_id = :client AND user_id = :user AND revoked_at IS NULL')
-                    ->execute(['client' => (int)$client['id'], 'user' => (int)$row['user_id']]);
+                $pdo->prepare('UPDATE oauth_access_tokens SET revoked_at = UTC_TIMESTAMP() WHERE family_id = :family AND revoked_at IS NULL')
+                    ->execute(['family' => $row['family_id']]);
                 $pdo->commit();
                 return null;
             }
@@ -236,6 +236,8 @@ final class OAuthService
             }
             $pdo->prepare('UPDATE oauth_refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE family_id = :family AND revoked_at IS NULL')
                 ->execute(['family' => $row['family_id']]);
+            $pdo->prepare('UPDATE oauth_access_tokens SET revoked_at = UTC_TIMESTAMP() WHERE family_id = :family AND revoked_at IS NULL')
+                ->execute(['family' => $row['family_id']]);
             $pdo->commit();
             return true;
         } catch (Throwable $e) {
@@ -266,11 +268,11 @@ final class OAuthService
         $refreshExpires = time() + self::REFRESH_TOKEN_TTL;
 
         $accessStmt = $pdo->prepare(
-            'INSERT INTO oauth_access_tokens (client_id, user_id, token_hash, scopes, expires_at)
-             VALUES (:client, :user, :hash, :scopes, :expires)'
+            'INSERT INTO oauth_access_tokens (client_id, user_id, family_id, token_hash, scopes, expires_at)
+             VALUES (:client, :user, :family, :hash, :scopes, :expires)'
         );
         $accessStmt->execute([
-            'client' => $clientId, 'user' => $userId, 'hash' => hash('sha256', $access),
+            'client' => $clientId, 'user' => $userId, 'family' => $familyId, 'hash' => hash('sha256', $access),
             'scopes' => json_encode($scopes, JSON_THROW_ON_ERROR),
             'expires' => gmdate('Y-m-d H:i:s', $accessExpires),
         ]);
