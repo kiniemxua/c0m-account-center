@@ -316,4 +316,5 @@ return [
 'none' => 'No recurring billing',
 'month' => 'Monthly',
 'year' => 'Yearly',
+'Too many authorization requests. Please try again later.' => 'Too many authorization requests. Please try again later.',
 ];
