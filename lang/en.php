@@ -276,4 +276,5 @@ return [
 'Disable client' => 'Disable client',
 'Enable client' => 'Enable client',
 'No OAuth clients registered.' => 'No OAuth clients registered.',
+'Redirect URIs' => 'Redirect URIs',
 ];
