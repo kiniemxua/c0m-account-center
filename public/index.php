@@ -21,6 +21,7 @@ $router->get('/oauth/jwks', [OAuthController::class, 'jwks']);
 $router->get('/oauth/authorize', [OAuthController::class, 'authorize']);
 $router->post('/oauth/authorize', [OAuthController::class, 'authorize']);
 $router->post('/oauth/token', [OAuthController::class, 'token']);
+$router->post('/oauth/revoke', [OAuthController::class, 'revoke']);
 $router->get('/oauth/userinfo', [OAuthController::class, 'userinfo']);
 $router->post('/language', [LanguageController::class, 'switch']);
 $router->get('/', [HomeController::class, 'index']);
