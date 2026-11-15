@@ -72,6 +72,7 @@ $registryGroupId = null;
 $flowEmail = null;
 $planKey = null;
 $paymentEventId = null;
+$paymentEventIds = [];
 $process = null;
 $pipes = [];
 $serverStdoutPath = '';
@@ -709,13 +710,15 @@ try {
         'quotas' => json_encode(['subdomains' => 10, 'storage_mb' => 1024], JSON_THROW_ON_ERROR),
     ]);
     $paymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $paymentEventId;
+    $providerSubscriptionId = 'sub-' . bin2hex(random_bytes(8));
     $paymentEventBody = json_encode([
         'id' => $paymentEventId,
         'type' => 'subscription.activated',
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,
-            'provider_subscription_id' => 'sub-' . bin2hex(random_bytes(8)),
+            'provider_subscription_id' => $providerSubscriptionId,
             'provider_customer_id' => 'cus-http-test',
             'status' => 'active',
             'current_period_start' => gmdate('c'),
@@ -758,6 +761,60 @@ try {
     $outboxCount = $pdo->prepare('SELECT COUNT(*) FROM event_outbox WHERE event_key = :key');
     $outboxCount->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
     httpCheck((int)$outboxCount->fetchColumn() === 1, 'A processed payment webhook must create exactly one transactional outbox event.');
+
+    $scheduledEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $scheduledEventId;
+    $scheduledBody = json_encode([
+        'id' => $scheduledEventId,
+        'type' => 'subscription.canceled',
+        'data' => [
+            'user_id' => $testUserId,
+            'plan_key' => $planKey,
+            'provider_subscription_id' => $providerSubscriptionId,
+            'status' => 'canceled',
+            'current_period_start' => gmdate('c', time() - 86400),
+            'current_period_end' => gmdate('c', time() + 20 * 86400),
+            'cancel_at_period_end' => true,
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $scheduledTimestamp = (string)time();
+    $scheduledSignature = hash_hmac('sha256', $scheduledTimestamp . '.' . $scheduledBody, $paymentTestSecret);
+    $scheduledHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $scheduledTimestamp . ',v1=' . $scheduledSignature,
+    ];
+    $scheduledCancellation = $request('POST', '/api/v1/webhooks/payments', $scheduledBody, '', true, $scheduledHeaders);
+    httpCheck($scheduledCancellation['status'] === 200, 'A scheduled subscription cancellation must be accepted.');
+    $activeEntitlementCount = $pdo->prepare("SELECT COUNT(*) FROM user_entitlements WHERE user_id = :user AND status = 'active' AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP())");
+    $activeEntitlementCount->execute(['user' => $testUserId]);
+    httpCheck((int)$activeEntitlementCount->fetchColumn() >= 4, 'Entitlements must remain valid until the scheduled period end.');
+
+    $immediateEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $immediateEventId;
+    $immediateBody = json_encode([
+        'id' => $immediateEventId,
+        'type' => 'subscription.canceled',
+        'data' => [
+            'user_id' => $testUserId,
+            'plan_key' => $planKey,
+            'provider_subscription_id' => $providerSubscriptionId,
+            'status' => 'canceled',
+            'current_period_start' => gmdate('c', time() - 86400),
+            'current_period_end' => gmdate('c', time() - 1),
+            'cancel_at_period_end' => false,
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $immediateTimestamp = (string)time();
+    $immediateSignature = hash_hmac('sha256', $immediateTimestamp . '.' . $immediateBody, $paymentTestSecret);
+    $immediateCancellation = $request('POST', '/api/v1/webhooks/payments', $immediateBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $immediateTimestamp . ',v1=' . $immediateSignature,
+    ]);
+    httpCheck($immediateCancellation['status'] === 200, 'An immediate subscription cancellation must be accepted.');
+    $activeEntitlementCount->execute(['user' => $testUserId]);
+    httpCheck((int)$activeEntitlementCount->fetchColumn() === 0, 'Immediate cancellation must revoke the member entitlements.');
     $badPaymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, [
         'Content-Type: application/json',
         'X-C0M-Provider: generic',
@@ -979,11 +1036,11 @@ try {
             $pdo->prepare('DELETE FROM payment_transactions WHERE user_id = :id')->execute(['id' => $testUserId]);
             $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
         }
-        if (is_string($paymentEventId)) {
+        foreach ($paymentEventIds as $eventId) {
             $pdo->prepare('DELETE FROM payment_webhook_events WHERE provider = :provider AND provider_event_id = :event')
-                ->execute(['provider' => 'generic', 'event' => $paymentEventId]);
+                ->execute(['provider' => 'generic', 'event' => $eventId]);
             $pdo->prepare('DELETE FROM event_outbox WHERE event_key = :key')
-                ->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
+                ->execute(['key' => hash('sha256', 'generic:' . $eventId)]);
         }
         if (is_string($planKey)) {
             $pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $planKey]);
