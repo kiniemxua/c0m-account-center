@@ -41,6 +41,9 @@ final class SubscriptionService
         }
         $customerId = is_string($data['provider_customer_id'] ?? null) ? substr($data['provider_customer_id'], 0, 190) : null;
         $cancelAtPeriodEnd = !empty($data['cancel_at_period_end']) ? 1 : 0;
+        if ($cancelAtPeriodEnd === 1 && $periodEnd === null) {
+            throw new RuntimeException('cancellation_period_end_required');
+        }
 
         $find = $pdo->prepare(
             'SELECT id, user_id FROM subscriptions
