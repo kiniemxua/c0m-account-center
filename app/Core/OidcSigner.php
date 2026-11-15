@@ -34,6 +34,9 @@ final class OidcSigner
                 throw new RuntimeException('Could not securely persist OIDC signing key.');
             }
         }
+        if (!chmod($path, 0600)) {
+            throw new RuntimeException('OIDC signing key permissions could not be restricted.');
+        }
         $pem = file_get_contents($path);
         if (!is_string($pem) || $pem === '') throw new RuntimeException('OIDC signing key is unreadable.');
         $key = openssl_pkey_get_private($pem);
