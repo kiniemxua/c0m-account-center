@@ -10,12 +10,12 @@ function installerCheck(bool $condition, string $message): void
         throw new RuntimeException($message);
     }
 }
-
 $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
 $dbPort = (int)(getenv('DB_PORT') ?: 3306);
 $dbName = getenv('DB_NAME') ?: 'c0m_test';
 $dbUser = getenv('DB_USER') ?: 'root';
 $dbPassword = getenv('DB_PASSWORD') ?: '';
+installerCheck($dbName === 'c0m_test', 'Installer test may only run against the disposable c0m_test database.');
 $root = new PDO(
     sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $dbHost, $dbPort, $dbName),
     $dbUser,
@@ -23,6 +23,10 @@ $root = new PDO(
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
 );
 $root->exec("SET time_zone = '+00:00'");
+$tableCount = (int)$root->query(
+    'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ' . $root->quote($dbName)
+)->fetchColumn();
+installerCheck($tableCount === 0, 'Installer test requires an empty c0m_test database; prepare a fresh disposable schema before rerunning.');
 
 $configPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
@@ -35,7 +39,9 @@ $pipes = [];
 
 try {
     installerCheck(file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) !== false, 'Could not create trusted-proxy test configuration.');
-    $root->exec("CREATE USER IF NOT EXISTS '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
+    $root->exec("DROP USER IF EXISTS '{$limitedUser}'@'%'");
+    $root->exec("CREATE USER '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
+    $root->exec("REVOKE ALL PRIVILEGES, GRANT OPTION FROM '{$limitedUser}'@'%'");
     $root->exec("GRANT SELECT, INSERT, UPDATE, CREATE, INDEX, REFERENCES ON `{$dbName}`.* TO '{$limitedUser}'@'%'");
 
     $portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);

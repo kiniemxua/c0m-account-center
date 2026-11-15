@@ -78,8 +78,12 @@ final class AdminController
                 $status === 'active'
             );
 
+            $statusChanged = $targetRow['status'] !== $status;
             $stmt = $pdo->prepare('UPDATE users SET status = :status, updated_at = NOW() WHERE id = :id');
             $stmt->execute(['status' => $status, 'id' => $targetId]);
+            if ($statusChanged) {
+                \App\Core\AuthorizationRevision::bump($pdo, $targetId);
+            }
             if ($status !== 'active') {
                 $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE user_id = :id AND revoked_at IS NULL')
                     ->execute(['id' => $targetId]);

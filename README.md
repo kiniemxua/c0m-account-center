@@ -22,12 +22,17 @@ The repository contains an account/authentication foundation:
 - Hardened PHP sessions with server-side records, idle/absolute expiry and revocation.
 - Session/device listing, individual revocation and sign-out-other-devices.
 - Database-backed Super Admin, Admin and Member roles with protected admin routes and multi-role member assignments.
+- Monotonic per-user authorization revisions incremented when role assignments, account status or email-verification state changes.
+- Super Admin member-group creation and membership assignment with transactional revision updates.
 - Transactional admin status/role changes and audit events.
+- Super Admin application registry for creating, editing, featuring and disabling catalog entries, with transactional audit events.
+- Super Admin member-group creation, membership assignment and active/disabled lifecycle with revision updates.
+- Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
 - Member profile preferences (display name, username, language and timezone).
 - Password change with current-password verification, throttling, session revocation and email notification.
 - Application and installer requests fail closed unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS; forwarded headers from untrusted clients are ignored.
 
-**Not production-ready.** The current automated HTTP suite exercises the real PHP router and key access-control/CSRF paths, but does not yet cover every end-to-end account flow. Concurrent last-Super-Admin controller tests, filesystem-permission installer injection, full SMTP TLS/auth failure fixtures, independent security review and broader browser-level UI coverage remain outstanding. Vietnamese/English localization is implemented on the Phase 3 branch; acceptance remains pending full CI and review. Do not treat the branch as production-ready until those gates pass. App Registry and OAuth/OIDC SSO are separate milestones and are not complete.
+**Not production-ready.** Registry group grants now control whether restricted entries appear in the Account Center dashboard, but external applications still need OAuth/API enforcement and must not rely on directory visibility. No OAuth/OIDC SSO, public member API, subscription/payment processing or signed webhook delivery is implemented yet. The HTTP suite covers registry/group access, CSRF, grants, revocation, URL validation and audit behavior, but broader browser coverage, independent security review and deployment review remain outstanding. Do not treat the branch as production-ready until those gaps are closed and CI/deployment gates pass.
 
 ## cPanel installation
 
@@ -38,7 +43,17 @@ The repository contains an account/authentication foundation:
 5. Visit /installer/ over HTTPS and create the first administrator.
 6. Keep storage/install.lock, deny public access to /installer/ after setup and make config files read-only.
 
-See docs/INSTALLATION.md, docs/LOCALIZATION.md, docs/MAIL.md and docs/SECURITY.md.
+See docs/INSTALLATION.md, docs/LOCALIZATION.md, docs/MAIL.md, docs/SECURITY.md, docs/ARCHITECTURE.md and docs/API.md.
+
+## Documentation map
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system overview, runtime layers and security architecture.
+- [docs/API.md](docs/API.md): current HTTP patterns and future API contract direction.
+- [docs/INSTALLATION.md](docs/INSTALLATION.md): deployment and reverse-proxy setup guidance.
+- [docs/LOCALIZATION.md](docs/LOCALIZATION.md): locale selection, catalog maintenance and validation.
+- [docs/MAIL.md](docs/MAIL.md): SMTP and development mail configuration.
+- [docs/SECURITY.md](docs/SECURITY.md): risk review and security controls.
+- [AI_MEMORY.md](AI_MEMORY.md): current project state and operational constraints.
 
 ## Tests
 
@@ -47,7 +62,7 @@ Run:
 - `php tests/unit.php`
 - `php tests/localization.php`
 - `php tests/smtp.php`
-- `php tests/installer.php` (requires a disposable MariaDB database and DB_* environment variables)
+- `php tests/installer.php` (requires an empty disposable `c0m_test` MariaDB database and DB_* environment variables; the test refuses non-empty schemas)
 - `php tests/integration.php` (requires a disposable MariaDB database and DB_* environment variables)
 - `php tests/rbac-concurrency.php` (requires a disposable MariaDB database and PHP proc_open)
 - `php tests/http.php` (requires the same DB_* environment variables and PHP proc_open)

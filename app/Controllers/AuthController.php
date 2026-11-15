@@ -171,6 +171,9 @@ final class AuthController
                     );
                     $activate->execute(['user_id' => (int)$row['user_id']]);
                     $verified = $activate->rowCount() === 1;
+                    if ($verified) {
+                        \App\Core\AuthorizationRevision::bump($pdo, (int)$row['user_id']);
+                    }
                 }
                 $pdo->commit();
             } catch (Throwable $e) {

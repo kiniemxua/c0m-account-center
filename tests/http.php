@@ -44,6 +44,8 @@ if (file_put_contents($mailConfigPath, "<?php return ['mode' => 'development_log
 
 $pdo = null;
 $testUserId = null;
+$registryAppId = null;
+$registryGroupId = null;
 $flowEmail = null;
 $process = null;
 $pipes = [];
@@ -242,6 +244,9 @@ try {
     }
     $verified = $request('POST', '/verify-email', http_build_query(['_csrf' => $verifyCsrf, 'token' => $verifyToken]), $cookie);
     httpCheck($verified['status'] === 200 && str_contains($verified['body'], 'Email verified'), 'Email verification must activate the account through HTTP.');
+    $verifiedRevision = $pdo->prepare('SELECT revision FROM user_authorization_revisions WHERE user_id = (SELECT id FROM users WHERE email = :email)');
+    $verifiedRevision->execute(['email' => $flowEmail]);
+    httpCheck((int)$verifiedRevision->fetchColumn() === 2, 'Account activation must advance the authorization revision.');
     $verifyReplay = $request('POST', '/verify-email', http_build_query(['_csrf' => $verifyCsrf, 'token' => $verifyToken]), $cookie);
     httpCheck(str_contains($verifyReplay['body'], 'Link unavailable'), 'Email verification token replay must be rejected over HTTP.');
 
@@ -346,6 +351,14 @@ try {
 
     $settings = $request('GET', '/admin/settings', '', $cookie);
     httpCheck($settings['status'] === 401, 'An unauthenticated HTTP request must not access admin settings.');
+    $applications = $request('GET', '/admin/applications', '', $cookie);
+    httpCheck($applications['status'] === 401, 'An unauthenticated HTTP request must not access the application registry.');
+    $applicationsCsrf = $request('POST', '/admin/applications/save', 'app_key=missing-csrf', $cookie);
+    httpCheck($applicationsCsrf['status'] === 419, 'Application registry writes must reject missing CSRF tokens.');
+    $groupsAnonymous = $request('GET', '/admin/groups', '', $cookie);
+    httpCheck($groupsAnonymous['status'] === 401, 'An unauthenticated HTTP request must not access member groups.');
+    $groupsCsrf = $request('POST', '/admin/groups', 'action=create', $cookie);
+    httpCheck($groupsCsrf['status'] === 419, 'Member group writes must reject missing CSRF tokens.');
 
     $loginSuccess = $request('POST', '/login', http_build_query([
         '_csrf' => $csrf,
@@ -365,6 +378,10 @@ try {
     httpCheck($dashboard['status'] === 200 && str_contains($dashboard['body'], 'HTTP test member'), 'The authenticated member must reach the dashboard through HTTP.');
     $memberAdmin = $request('GET', '/admin/users', '', $authCookie);
     httpCheck($memberAdmin['status'] === 403, 'A member must be denied admin routes even with a valid session.');
+    $memberApplications = $request('GET', '/admin/applications', '', $authCookie);
+    httpCheck($memberApplications['status'] === 403, 'A member must not manage the application registry.');
+    $memberGroups = $request('GET', '/admin/groups', '', $authCookie);
+    httpCheck($memberGroups['status'] === 403, 'A member must not manage groups.');
 
     $dashboardCsrf = '';
     if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $dashboard['body'], $match)) {
@@ -409,6 +426,10 @@ try {
     // Promote this isolated fixture to Admin and exercise the real admin locale flow.
     $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'admin'")
         ->execute(['id' => $testUserId]);
+    $adminApplications = $request('GET', '/admin/applications', '', $authCookie);
+    httpCheck($adminApplications['status'] === 403, 'An Admin without apps.manage must not manage the application registry.');
+    $adminGroups = $request('GET', '/admin/groups', '', $authCookie);
+    httpCheck($adminGroups['status'] === 403, 'An Admin without groups.manage must not manage groups.');
     $adminPage = $request('GET', '/admin/users', '', $authCookie);
     httpCheck($adminPage['status'] === 200 && str_contains($adminPage['body'], '<html lang="vi">'), 'An authenticated administrator must reach the admin interface in the saved Vietnamese account language.');
     $adminCsrf = '';
@@ -436,6 +457,165 @@ try {
     httpCheck($adminLanguageBack['status'] === 303, 'An administrator must be able to switch back to Vietnamese.');
     $adminPageVi = $request('GET', '/admin/users', '', $authCookie);
     httpCheck($adminPageVi['status'] === 200 && str_contains($adminPageVi['body'], '<html lang="vi">'), 'The administrator Vietnamese preference must persist across requests.');
+
+    $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'")
+        ->execute(['id' => $testUserId]);
+    $registryPage = $request('GET', '/admin/applications', '', $authCookie);
+    httpCheck($registryPage['status'] === 200 && str_contains($registryPage['body'], '<html lang="vi">'), 'A Super Admin must open the localized application registry.');
+    $registryCsrf = '';
+    if (preg_match('/name="_csrf"\s+value="([a-f0-9]{64})"/', $registryPage['body'], $match)) {
+        $registryCsrf = $match[1];
+    }
+    httpCheck($registryCsrf !== '', 'The application registry form must include CSRF protection.');
+
+    $groupsPage = $request('GET', '/admin/groups', '', $authCookie);
+    httpCheck($groupsPage['status'] === 200 && str_contains($groupsPage['body'], '<html lang="vi">'), 'A Super Admin must open the localized member groups page.');
+    $groupKey = 'http-group-' . bin2hex(random_bytes(5));
+    $groupCreate = $request('POST', '/admin/groups', http_build_query([
+        '_csrf' => $registryCsrf,
+        'action' => 'create',
+        'group_key' => $groupKey,
+        'name' => 'HTTP Restricted Group',
+        'description' => 'Isolated HTTP group fixture.',
+    ]), $authCookie);
+    httpCheck($groupCreate['status'] === 303, 'A Super Admin must create a member group through HTTP.');
+    $groupLookup = $pdo->prepare('SELECT id FROM member_groups WHERE group_key = :group_key');
+    $groupLookup->execute(['group_key' => $groupKey]);
+    $registryGroupId = (int)$groupLookup->fetchColumn();
+    httpCheck($registryGroupId > 0, 'The member group must persist in the database.');
+
+    $userRevision = $pdo->prepare('SELECT revision FROM user_authorization_revisions WHERE user_id = :id');
+    $userRevision->execute(['id' => $testUserId]);
+    $revisionBeforeGroup = (int)$userRevision->fetchColumn();
+    if ($revisionBeforeGroup < 1) $revisionBeforeGroup = 1;
+    $assignGroup = $request('POST', '/admin/groups', http_build_query([
+        '_csrf' => $registryCsrf,
+        'action' => 'members',
+        'group_id' => $registryGroupId,
+        'user_ids' => [(string)$testUserId],
+    ]), $authCookie);
+    httpCheck($assignGroup['status'] === 303, 'A Super Admin must assign members to a group through HTTP.');
+    $groupMembership = $pdo->prepare('SELECT COUNT(*) FROM user_groups WHERE user_id = :user_id AND group_id = :group_id');
+    $groupMembership->execute(['user_id' => $testUserId, 'group_id' => $registryGroupId]);
+    httpCheck((int)$groupMembership->fetchColumn() === 1, 'Group assignment must persist.');
+    $userRevision->execute(['id' => $testUserId]);
+    httpCheck((int)$userRevision->fetchColumn() === $revisionBeforeGroup + 1, 'Group membership changes must advance the authorization revision.');
+
+    $statusRevision = $pdo->prepare('SELECT revision FROM user_authorization_revisions WHERE user_id = :id');
+    $statusRevision->execute(['id' => (int)$flowUserRow['id']]);
+    $flowRevision = (int)$statusRevision->fetchColumn();
+    $suspendMember = $request('POST', '/admin/users/status', http_build_query([
+        '_csrf' => $registryCsrf,
+        'user_id' => (int)$flowUserRow['id'],
+        'status' => 'suspended',
+    ]), $authCookie);
+    httpCheck($suspendMember['status'] === 303, 'A Super Admin must be able to suspend a member through the admin route.');
+    $statusRevision->execute(['id' => (int)$flowUserRow['id']]);
+    httpCheck((int)$statusRevision->fetchColumn() === $flowRevision + 1, 'Changing account status must advance the authorization revision.');
+    $repeatSuspend = $request('POST', '/admin/users/status', http_build_query([
+        '_csrf' => $registryCsrf,
+        'user_id' => (int)$flowUserRow['id'],
+        'status' => 'suspended',
+    ]), $authCookie);
+    httpCheck($repeatSuspend['status'] === 303, 'An idempotent status submission must remain successful.');
+    $statusRevision->execute(['id' => (int)$flowUserRow['id']]);
+    httpCheck((int)$statusRevision->fetchColumn() === $flowRevision + 1, 'Submitting an unchanged account status must not advance the authorization revision.');
+
+    $registryKey = 'http-registry-' . bin2hex(random_bytes(5));
+    $registryName = 'HTTP Registry App';
+    $registryFields = [
+        'app_key' => $registryKey,
+        'name' => $registryName,
+        'description' => 'Created by the isolated HTTP registry test.',
+        'url' => 'https://registry.example.test/app',
+        'icon_path' => '/assets/registry-test.png',
+        'category' => 'Testing',
+        'version' => '1.0',
+        'status' => 'active',
+        'access_level' => 'members',
+        'featured' => '1',
+    ];
+    $registryCreate = $request('POST', '/admin/applications/save', http_build_query(['_csrf' => $registryCsrf] + $registryFields), $authCookie);
+    httpCheck($registryCreate['status'] === 303 && in_array('Location: /admin/applications', $registryCreate['headers'], true), 'A Super Admin must create an application through the real HTTP route.');
+    $registryLookup = $pdo->prepare('SELECT id, name, url, status, access_level, featured FROM applications WHERE app_key = :app_key');
+    $registryLookup->execute(['app_key' => $registryKey]);
+    $registryRow = $registryLookup->fetch();
+    httpCheck($registryRow && $registryRow['name'] === $registryName && $registryRow['status'] === 'active' && $registryRow['access_level'] === 'members' && (int)$registryRow['featured'] === 1, 'Application creation must persist the submitted registry fields.');
+    $registryAppId = (int)$registryRow['id'];
+
+    $memberDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck($memberDashboard['status'] === 200 && str_contains($memberDashboard['body'], $registryName) && str_contains($memberDashboard['body'], 'https://registry.example.test/app'), 'Active member applications must appear as safe links on the dashboard.');
+    $invalidRegistryUrl = $request('POST', '/admin/applications/save', http_build_query([
+        '_csrf' => $registryCsrf,
+        'id' => (string)$registryAppId,
+    ] + array_merge($registryFields, ['url' => 'javascript:alert(1)'])), $authCookie);
+    httpCheck($invalidRegistryUrl['status'] === 422, 'Non-HTTPS application URLs must be rejected.');
+
+    $duplicateRegistryKey = $request('POST', '/admin/applications/save', http_build_query([
+        '_csrf' => $registryCsrf,
+    ] + array_merge($registryFields, ['name' => 'Duplicate application'])), $authCookie);
+    httpCheck($duplicateRegistryKey['status'] === 409, 'Duplicate application keys must return a conflict without replacing the existing entry.');
+
+    $registryFields['id'] = (string)$registryAppId;
+    $registryFields['name'] = 'Updated Registry App';
+    $registryFields['description'] = 'Updated through the HTTP registry test.';
+    $registryFields['access_level'] = 'restricted';
+    $registryFields['group_ids'] = [(string)$registryGroupId];
+    unset($registryFields['featured']);
+    $userRevision->execute(['id' => $testUserId]);
+    $revisionBeforeGrant = (int)$userRevision->fetchColumn();
+    $registryUpdate = $request('POST', '/admin/applications/save', http_build_query(['_csrf' => $registryCsrf] + $registryFields), $authCookie);
+    httpCheck($registryUpdate['status'] === 303, 'A Super Admin must update an existing application.');
+    $registryLookup->execute(['app_key' => $registryKey]);
+    $registryRow = $registryLookup->fetch();
+    httpCheck($registryRow && $registryRow['name'] === 'Updated Registry App' && $registryRow['access_level'] === 'restricted' && (int)$registryRow['featured'] === 0, 'Application updates must persist and omitted featured state must clear.');
+    $restrictedDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck($registryUpdate['status'] === 303 && str_contains($restrictedDashboard['body'], 'Updated Registry App'), 'A restricted application must appear for a member with an explicit matching group grant.');
+    $userRevision->execute(['id' => $testUserId]);
+    $revisionAfterGrant = (int)$userRevision->fetchColumn();
+    httpCheck($revisionAfterGrant === $revisionBeforeGrant + 1, 'Changing application group grants must advance affected member revisions.');
+    $disableGroup = $request('POST', '/admin/groups', http_build_query([
+        '_csrf' => $registryCsrf,
+        'action' => 'update',
+        'group_id' => $registryGroupId,
+        'name' => 'HTTP Restricted Group',
+        'description' => 'Isolated HTTP group fixture.',
+        'status' => 'disabled',
+    ]), $authCookie);
+    httpCheck($disableGroup['status'] === 303, 'A Super Admin must be able to disable a member group.');
+    $userRevision->execute(['id' => $testUserId]);
+    $revisionAfterDisable = (int)$userRevision->fetchColumn();
+    httpCheck($revisionAfterDisable === $revisionAfterGrant + 1, 'Disabling a group must advance member authorization revisions.');
+    $disabledGroupDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck(!str_contains($disabledGroupDashboard['body'], 'Updated Registry App'), 'A disabled group must no longer grant restricted application visibility.');
+    $enableGroup = $request('POST', '/admin/groups', http_build_query([
+        '_csrf' => $registryCsrf,
+        'action' => 'update',
+        'group_id' => $registryGroupId,
+        'name' => 'HTTP Restricted Group',
+        'description' => 'Isolated HTTP group fixture.',
+        'status' => 'active',
+    ]), $authCookie);
+    httpCheck($enableGroup['status'] === 303, 'A Super Admin must be able to re-enable a member group.');
+    $userRevision->execute(['id' => $testUserId]);
+    $revisionAfterEnable = (int)$userRevision->fetchColumn();
+    httpCheck($revisionAfterEnable === $revisionAfterDisable + 1, 'Re-enabling a group must advance member authorization revisions.');
+    $reenabledGroupDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck(str_contains($reenabledGroupDashboard['body'], 'Updated Registry App'), 'Re-enabling a granted group must restore application visibility.');
+    $revisionBeforeGroupRemoval = $revisionAfterEnable;
+    $removeGroup = $request('POST', '/admin/groups', http_build_query([
+        '_csrf' => $registryCsrf,
+        'action' => 'members',
+        'group_id' => $registryGroupId,
+    ]), $authCookie);
+    httpCheck($removeGroup['status'] === 303, 'A Super Admin must be able to revoke group membership.');
+    $userRevision->execute(['id' => $testUserId]);
+    httpCheck((int)$userRevision->fetchColumn() === $revisionBeforeGroupRemoval + 1, 'Group membership revocation must advance the authorization revision.');
+    $restrictedDashboard = $request('GET', '/dashboard', '', $authCookie);
+    httpCheck(!str_contains($restrictedDashboard['body'], 'Updated Registry App'), 'A restricted application must disappear after its group grant is revoked.');
+    $registryAudits = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE subject_type = 'application' AND subject_id = :id AND action IN ('application.created', 'application.updated')");
+    $registryAudits->execute(['id' => (string)$registryAppId]);
+    httpCheck((int)$registryAudits->fetchColumn() === 2, 'Registry create and update must each produce an audit event.');
 
     $logoutCsrf = '';
     if (preg_match('/name="_csrf"\\s+value="([a-f0-9]{64})"/', $englishDashboard['body'], $match)) {
@@ -480,6 +660,16 @@ try {
             $pdo->prepare('DELETE FROM users WHERE email = :email')->execute(['email' => $flowEmail]);
         }
         if (is_int($testUserId)) {
+            if (is_int($registryAppId)) {
+                $pdo->prepare("DELETE FROM audit_logs WHERE subject_type = 'application' AND subject_id = :id")
+                    ->execute(['id' => (string)$registryAppId]);
+                $pdo->prepare('DELETE FROM applications WHERE id = :id')->execute(['id' => $registryAppId]);
+            }
+            if (is_int($registryGroupId)) {
+                $pdo->prepare("DELETE FROM audit_logs WHERE subject_type = 'group' AND subject_id = :id")
+                    ->execute(['id' => (string)$registryGroupId]);
+                $pdo->prepare('DELETE FROM member_groups WHERE id = :id')->execute(['id' => $registryGroupId]);
+            }
             $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
         }
     }

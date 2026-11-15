@@ -48,6 +48,14 @@ $authMigration = file_get_contents(BASE_PATH . '/database/migrations/002_auth_fo
 assertIntegration($authMigration !== false, 'Auth migration must exist.');
 $pdo->exec($authMigration);
 $pdo->exec($authMigration); // RBAC and auth token migration must also be repeatable.
+$authorizationRevisionMigration = file_get_contents(BASE_PATH . '/database/migrations/004_authorization_revisions.sql');
+assertIntegration($authorizationRevisionMigration !== false, 'Authorization revision migration must exist.');
+$pdo->exec($authorizationRevisionMigration);
+$pdo->exec($authorizationRevisionMigration); // Revision storage and legacy backfill must be repeatable.
+$memberGroupsMigration = file_get_contents(BASE_PATH . '/database/migrations/005_member_groups.sql');
+assertIntegration($memberGroupsMigration !== false, 'Member group migration must exist.');
+$pdo->exec($memberGroupsMigration);
+$pdo->exec($memberGroupsMigration); // Group membership and app grants must be repeatable.
 $preferencesMigration = file_get_contents(BASE_PATH . '/database/migrations/003_account_preferences.sql');
 assertIntegration($preferencesMigration !== false, 'Account preferences migration must exist.');
 // Existing account choices must survive the first application of migration 003.
@@ -83,6 +91,9 @@ $email = 'ci-' . bin2hex(random_bytes(6)) . '@example.test';
 $insert = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
 $insert->execute(['email' => $email, 'hash' => password_hash('Correct-Horse-42!', PASSWORD_DEFAULT)]);
 $userId = (int)$pdo->lastInsertId();
+$pdo->prepare('DELETE FROM user_authorization_revisions WHERE user_id = :id')->execute(['id' => $userId]);
+$pdo->exec($authorizationRevisionMigration);
+assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === 1, 'Reapplying the revision migration must backfill a missing user revision at version 1.');
 
 // Account language is authoritative over stale session/cookie values; invalid saved values safely fall back.
 $_SESSION = ['user_id' => $userId, 'locale' => 'en'];
@@ -129,6 +140,10 @@ $superRole->execute(['id' => $userId]);
 
 // Multiple roles must persist and render as individually selected checkboxes.
 $multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['member', 'super_admin']);
+$roleRevision = App\Core\AuthorizationRevision::current($pdo, $userId);
+assertIntegration($roleRevision === 2, 'Changing user roles must increment the authorization revision.');
+$multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['super_admin', 'member']);
+assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === $roleRevision, 'Reapplying the same role set must not increment the authorization revision.');
 $roleLookup = $pdo->prepare(
     'SELECT GROUP_CONCAT(r.role_key ORDER BY r.role_key SEPARATOR ", ")
      FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id'
