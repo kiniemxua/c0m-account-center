@@ -122,7 +122,7 @@ final class SubscriptionService
             $date = is_int($value)
                 ? (new \DateTimeImmutable('@' . $value))->setTimezone(new \DateTimeZone('UTC'))
                 : new \DateTimeImmutable($value, new \DateTimeZone('UTC'));
-            return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+            return $date->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s.u');
         } catch (\Throwable) {
             throw new RuntimeException('invalid_subscription_date');
         }
