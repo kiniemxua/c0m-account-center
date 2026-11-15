@@ -78,6 +78,7 @@ final class OidcSigner
         if (is_dir($previousDirectory)) {
             $minimumCreatedAt = time() - 86400;
             foreach (glob($previousDirectory . '/*.pem') ?: [] as $path) {
+                if (is_link($path)) continue;
                 $createdAt = @filemtime($path);
                 if (!is_int($createdAt) || $createdAt < $minimumCreatedAt || $createdAt > time() + 60) {
                     continue;
