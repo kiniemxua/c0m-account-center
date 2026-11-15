@@ -389,7 +389,10 @@ final class AuthController
         }
 
         SessionManager::establish((int)$user['id']);
-        header('Location: /dashboard', true, 303);
+        // Preserve a validated OAuth authorization request across sign-in.
+        // The request itself is stored server-side by OAuthController; never
+        // accept an arbitrary return URL from the login form.
+        header('Location: ' . (is_array($_SESSION['oauth_pending'] ?? null) ? '/oauth/authorize' : '/dashboard'), true, 303);
     }
 
     public function logout(): void
