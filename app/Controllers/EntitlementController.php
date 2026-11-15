@@ -44,6 +44,7 @@ final class EntitlementController
                 'authorization_revision' => $revision,
             ],
             'meta' => [
+                'request_id' => bin2hex(random_bytes(16)),
                 'timestamp' => gmdate('c'),
             ],
         ]);

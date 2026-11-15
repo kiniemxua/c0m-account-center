@@ -2,7 +2,7 @@
 
 ## Current state
 
-The web surface remains server-rendered PHP for browser account and administration pages. External applications now have an OAuth 2.0 / OpenID Connect provider using Authorization Code + PKCE (S256), plus scoped OIDC UserInfo. Subscription, entitlement, payment and signed webhook APIs are not implemented yet.
+The web surface remains server-rendered PHP for browser account and administration pages. External applications now have an OAuth 2.0 / OpenID Connect provider using Authorization Code + PKCE (S256), plus scoped OIDC UserInfo. Subscription plans, member entitlements, signed payment webhook ingestion and transactional outbox delivery are implemented. Provider-specific checkout adapters and production payment lifecycle operations remain deployment work.
 
 See [OAUTH.md](OAUTH.md) for the complete authorization flow, provisioning commands, scopes and operational limitations.
 
@@ -48,7 +48,7 @@ CORS is limited to origins derived from active clients' registered HTTPS redirec
 
 The authenticated dashboard lists active `public` and `members` entries, and lists `restricted` entries only when the user belongs to an active group explicitly granted to that application. These grants control Account Center directory visibility only; external applications must authenticate users and authorize requests independently.
 
-OAuth clients are currently provisioned through the CLI script `scripts/create-oauth-client.php`. One OAuth client is allowed per application registry entry. Confidential client secrets are displayed once and only their SHA-256 hashes are stored. See [OAUTH.md](OAUTH.md).
+Super Admins can provision, rotate and disable OAuth clients in the browser at `/admin/oauth-clients`; the CLI script `scripts/create-oauth-client.php` remains available for automation and recovery. One OAuth client is allowed per application registry entry. Confidential client secrets are displayed once and only their SHA-256 hashes are stored. See [OAUTH.md](OAUTH.md).
 
 ## Current browser account routes
 
@@ -65,16 +65,19 @@ OAuth clients are currently provisioned through the CLI script `scripts/create-o
 
 Browser mutations require session-bound CSRF tokens. The API bearer-token endpoints do not use browser cookies as identity.
 
-## Future API modules
+## Versioned member API
 
-The next API namespaces should remain explicit and versioned:
-- `/api/v1/me`
-- `/api/v1/memberships`
-- `/api/v1/entitlements`
-- `/api/v1/applications`
-- `/api/v1/webhooks`
+All member endpoints below require an OAuth bearer access token. Tokens are checked against the active user, client, expiry and revocation state on every request. Responses use `Cache-Control: no-store`.
 
-Use a normalized response envelope:
+| Endpoint | Required scope | Purpose |
+|---|---|---|
+| `GET /api/v1/me` | `openid` | Stable member ID and authorization revision; `profile` adds display name, username, avatar, language and timezone; `email` adds email and verification state. |
+| `GET /api/v1/me/groups` | `groups` | Active group keys and names. |
+| `GET /api/v1/me/memberships` | `groups` | Group assignments, including disabled-group state and assignment time. |
+| `GET /api/v1/me/permissions` | `permissions` | Effective role keys and permission keys. |
+| `GET /api/v1/me/entitlements` | `entitlements` | Active subscription features, quotas and their validity/revision metadata. |
+
+Every versioned member endpoint returns a consistent response envelope:
 
 ```json
 {
@@ -87,7 +90,7 @@ Use a normalized response envelope:
 }
 ```
 
-Errors should use stable machine-readable codes and must not expose SQL, secrets, token material or stack traces.
+Errors use stable machine-readable codes (`invalid_token`, `insufficient_scope`) and do not expose SQL, secrets, token material or stack traces. `meta.request_id` is a random per-response identifier; `meta.timestamp` is UTC. Authorization revisions must be retained with cached member authorization data and re-fetched whenever the revision changes.
 
 ## Integration principles
 

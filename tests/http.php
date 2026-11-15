@@ -605,7 +605,12 @@ try {
     $oauthClientId = (string)$oauthClientLookup->fetchColumn();
     httpCheck(preg_match('/\\A[a-f0-9]{64}\\z/D', $oauthClientId) === 1, 'The OAuth client ID must be generated and stored.');
     $discovery = $request('GET', '/.well-known/openid-configuration');
-    httpCheck($discovery['status'] === 200 && str_contains($discovery['body'], '/oauth/token') && str_contains($discovery['body'], 'RS256'), 'OpenID discovery must publish the issuer and supported endpoints.');
+    $discoveryData = json_decode($discovery['body'], true);
+    httpCheck($discovery['status'] === 200 && str_contains($discovery['body'], '/oauth/token') && str_contains($discovery['body'], 'RS256')
+        && is_array($discoveryData) && in_array('groups', $discoveryData['claims_supported'] ?? [], true)
+        && in_array('permissions', $discoveryData['claims_supported'] ?? [], true)
+        && in_array('authorization_revision', $discoveryData['claims_supported'] ?? [], true),
+        'OpenID discovery must publish supported endpoints and every available member claim.');
     $jwksResponse = $request('GET', '/oauth/jwks');
     httpCheck($jwksResponse['status'] === 200 && str_contains($jwksResponse['body'], '"kty":"RSA"'), 'The JWKS endpoint must publish an RSA public key.');
 
@@ -698,6 +703,34 @@ try {
         && in_array($groupKey, $userinfoData['groups'] ?? [], true)
         && array_key_exists('authorization_revision', $userinfoData),
         'OIDC userinfo must return only scoped member claims and the authorization revision.');
+
+    $apiUnauthenticated = $request('GET', '/api/v1/me');
+    httpCheck($apiUnauthenticated['status'] === 401, 'The central profile API must reject requests without a bearer token.');
+    $apiMe = $request('GET', '/api/v1/me', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $apiMeData = json_decode($apiMe['body'], true);
+    httpCheck($apiMe['status'] === 200 && is_array($apiMeData)
+        && ($apiMeData['ok'] ?? false) === true
+        && ($apiMeData['data']['id'] ?? '') === (string)$testUserId
+        && ($apiMeData['data']['email'] ?? '') === $testEmail
+        && isset($apiMeData['data']['authorization_revision'], $apiMeData['meta']['request_id']),
+        'The versioned profile API must return scoped identity data and a revision envelope.');
+    $apiGroups = $request('GET', '/api/v1/me/groups', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $apiGroupsData = json_decode($apiGroups['body'], true);
+    httpCheck($apiGroups['status'] === 200 && is_array($apiGroupsData)
+        && in_array($groupKey, array_column($apiGroupsData['data']['groups'] ?? [], 'group_key'), true),
+        'The central groups API must return active member group keys.');
+    $apiPermissions = $request('GET', '/api/v1/me/permissions', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $apiPermissionsData = json_decode($apiPermissions['body'], true);
+    httpCheck($apiPermissions['status'] === 200 && is_array($apiPermissionsData)
+        && is_array($apiPermissionsData['data']['roles'] ?? null)
+        && is_array($apiPermissionsData['data']['permissions'] ?? null)
+        && isset($apiPermissionsData['data']['authorization_revision']),
+        'The central permissions API must return role and effective permission keys.');
+    $apiMemberships = $request('GET', '/api/v1/me/memberships', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $apiMembershipsData = json_decode($apiMemberships['body'], true);
+    httpCheck($apiMemberships['status'] === 200 && is_array($apiMembershipsData)
+        && in_array($groupKey, array_column($apiMembershipsData['data']['memberships'] ?? [], 'group_key'), true),
+        'The central memberships API must return the member group assignments.');
 
     $planKey = 'http-pro-' . bin2hex(random_bytes(4));
     $pdo->prepare(

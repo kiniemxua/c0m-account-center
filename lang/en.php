@@ -19,7 +19,7 @@ return [
 'Sign out other devices' => 'Sign out other devices', 'Revoke session' => 'Revoke session',
 'No active sessions found.' => 'No active sessions found.', 'This device' => 'This device',
 'Recent successful sign-ins associated with this account.' => 'Recent successful sign-ins associated with this account.',
-'No login history is available yet.' => 'No login history is available yet.', 'Members' => 'Members',
+'No login history is available yet.' => 'No login history is available yet.', 'Account status' => 'Account status', 'Manage your profile' => 'Manage your profile', 'No applications yet' => 'No applications yet', 'Members' => 'Members',
 'Manage member account status and role assignments. Permissions are enforced on the server.' => 'Manage member account status and role assignments. Permissions are enforced on the server.',
 'Settings' => 'Settings', 'Registration' => 'Registration', 'Control whether new member accounts can be created.' => 'Control whether new member accounts can be created.',
 'Allow new registrations' => 'Allow new registrations', 'Save settings' => 'Save settings', 'Manage members' => 'Manage members',
@@ -277,4 +277,10 @@ return [
 'Enable client' => 'Enable client',
 'No OAuth clients registered.' => 'No OAuth clients registered.',
 'Redirect URIs' => 'Redirect URIs',
+
+'Review active devices and recent sign-ins.' => 'Review active devices and recent sign-ins.',
+'Create account' => 'Create account',
+'Review active devices and protect your account.' => 'Review active devices and protect your account.',
+'View your subscription entitlements' => 'View your subscription entitlements.',
+'Current session' => 'Current session',
 ];

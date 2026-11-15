@@ -76,11 +76,6 @@ try {
                 $responseStatus = null;
                 $errorCode = null;
                 try {
-                    $parts = parse_url((string)$delivery['endpoint_url']);
-                    if (!is_array($parts) || strtolower((string)($parts['scheme'] ?? '')) !== 'https'
-                        || empty($parts['host']) || isset($parts['user']) || isset($parts['pass'])) {
-                        throw new RuntimeException('invalid_endpoint');
-                    }
                     $secret = App\Core\Crypto::decrypt((string)$delivery['secret_ciphertext']);
                     $payload = json_encode([
                         'id' => (string)$event['event_key'],
@@ -98,27 +93,14 @@ try {
                         'X-C0M-Delivery: ' . $event['event_key'],
                         'X-C0M-Signature: t=' . $timestamp . ',v1=' . $signature,
                     ];
-                    $context = stream_context_create([
-                        'http' => [
-                            'method' => 'POST',
-                            'header' => implode("\r\n", $headers),
-                            'content' => $payload,
-                            'timeout' => 10,
-                            'ignore_errors' => true,
-                            'follow_location' => 0,
-                            'max_redirects' => 0,
-                            'protocol_version' => 1.1,
-                        ],
-                    ]);
-                    $response = @file_get_contents((string)$delivery['endpoint_url'], false, $context);
-                    foreach (($http_response_header ?? []) as $header) {
-                        if (preg_match('/^HTTP\/\S+\s+(\d{3})/', $header, $match)) {
-                            $responseStatus = (int)$match[1];
-                            break;
-                        }
+                    $responseStatus = App\Core\SafeWebhookHttpClient::post(
+                        (string)$delivery['endpoint_url'],
+                        $headers,
+                        $payload
+                    );
+                    if ($responseStatus < 200 || $responseStatus >= 300) {
+                        $errorCode = 'http_status_' . $responseStatus;
                     }
-                    if ($responseStatus === null) $errorCode = 'transport_error';
-                    elseif ($responseStatus < 200 || $responseStatus >= 300) $errorCode = 'http_status_' . $responseStatus;
                 } catch (Throwable $e) {
                     $errorCode = $e instanceof RuntimeException ? $e->getMessage() : 'delivery_error';
                 }
@@ -151,7 +133,7 @@ try {
                 $processed++;
             }
 
-            $pending = $pdo->prepare("SELECT COUNT(*) FROM webhook_deliveries WHERE outbox_id = :id AND status = 'pending'");
+            $pending = $pdo->prepare("SELECT COUNT(*) FROM webhook_deliveries WHERE outbox_id = :id AND status <> 'delivered'");
             $pending->execute(['id' => (int)$event['id']]);
             if ((int)$pending->fetchColumn() === 0) {
                 $pdo->prepare('UPDATE event_outbox SET delivered_at = UTC_TIMESTAMP(), attempts = attempts + 1 WHERE id = :id AND delivered_at IS NULL')

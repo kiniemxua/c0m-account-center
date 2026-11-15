@@ -20,6 +20,26 @@ function assertIntegration(bool $condition, string $message): void
     }
 }
 
+$rejectWebhookTarget = static function (string $url): bool {
+    try {
+        App\Core\SafeWebhookHttpClient::resolvePublicTarget($url);
+        return false;
+    } catch (RuntimeException) {
+        return true;
+    }
+};
+assertIntegration($rejectWebhookTarget('http://1.1.1.1/hook'), 'Webhook delivery must reject non-HTTPS URLs.');
+assertIntegration($rejectWebhookTarget('https://127.0.0.1/hook'), 'Webhook delivery must reject loopback IPv4.');
+assertIntegration($rejectWebhookTarget('https://10.0.0.8/hook'), 'Webhook delivery must reject private IPv4.');
+assertIntegration($rejectWebhookTarget('https://169.254.169.254/latest/meta-data/'), 'Webhook delivery must reject link-local metadata addresses.');
+assertIntegration($rejectWebhookTarget('https://[::1]/hook'), 'Webhook delivery must reject loopback IPv6.');
+assertIntegration($rejectWebhookTarget('https://127.1/hook'), 'Webhook delivery must reject abbreviated numeric IPv4 forms.');
+assertIntegration($rejectWebhookTarget('https://0x7f000001/hook'), 'Webhook delivery must reject hexadecimal numeric host forms.');
+assertIntegration($rejectWebhookTarget('https://example.com./hook'), 'Webhook delivery must reject trailing-dot hosts that could bypass DNS pinning.');
+assertIntegration($rejectWebhookTarget('https://example.com:8443/hook'), 'Webhook delivery must reject non-standard destination ports.');
+$publicWebhookTarget = App\Core\SafeWebhookHttpClient::resolvePublicTarget('https://1.1.1.1/hook');
+assertIntegration($publicWebhookTarget['ip'] === '1.1.1.1', 'Webhook delivery may target a public HTTPS IPv4 endpoint.');
+
 $dsn = sprintf(
     'mysql:host=%s;port=%s;dbname=%s;charset=utf8mb4',
     getenv('DB_HOST') ?: '127.0.0.1',

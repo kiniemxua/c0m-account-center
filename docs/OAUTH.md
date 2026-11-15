@@ -25,7 +25,7 @@ ID tokens are signed with RS256 using an RSA key of at least 2048 bits. The sign
 - `profile`: display name and preferred username/picture when present
 - `email`: email address and verification state
 - `groups`: active member group keys
-- `permissions`: effective role-derived permission keys
+- `permissions`: effective role-derived permission keys\n- `entitlements`: active subscription features and quotas through the versioned member API
 
 UserInfo also returns `authorization_revision`. Connected apps should compare this revision with their cached authorization snapshot and refresh when it changes. A connected app must still enforce its own server-side access checks; hiding an application in the dashboard is not an authorization boundary.
 
@@ -48,9 +48,9 @@ php scripts/create-oauth-client.php <application-id> confidential https://app.ex
 
 The command prints the client ID and, for confidential clients, a high-entropy client secret exactly once. Store the secret in the connected application's secret manager. Only its SHA-256 hash is stored in Account Center. Redirect URIs must be HTTPS, exact-match values without userinfo or fragments. One OAuth client is currently allowed per registry application.
 
-The CLI provisioning path is currently the supported client-management workflow. A complete browser-based OAuth client management screen, secret rotation UI and per-client audit view are still pending.
+Super Admins can also create clients, rotate confidential secrets and enable/disable clients in the browser at `/admin/oauth-clients`. The CLI remains available for automation and recovery; one client per application is enforced.
 
-## Authorization request
+## Versioned member API\n\nThe following endpoints accept OAuth bearer tokens and enforce their scopes on every request:\n\n| Endpoint | Scope | Data |\n|---|---|---|\n| `GET /api/v1/me` | `openid` | Stable member ID and authorization revision; optional `profile` and `email` claims. |\n| `GET /api/v1/me/groups` | `groups` | Active member group keys and names. |\n| `GET /api/v1/me/memberships` | `groups` | Group assignments and group lifecycle state. |\n| `GET /api/v1/me/permissions` | `permissions` | Effective roles and permission keys. |\n| `GET /api/v1/me/entitlements` | `entitlements` | Active feature flags, quotas and validity metadata. |\n\nEvery API response is non-cacheable and includes an authorization revision for downstream cache invalidation. See [API.md](API.md) for the response envelope and integration rules.\n\n## Authorization request
 
 Generate a cryptographically random PKCE verifier (43–128 allowed characters) and its S256 challenge. Generate independent random `state` and `nonce` values. Redirect the member's browser to:
 
@@ -99,7 +99,7 @@ Before production use, complete and review:
 - signing-key rotation with overlap and historical JWKS publication
 - token and authorization endpoint rate limits, anomaly monitoring and abuse controls
 - a formal OIDC conformance review and independent security review
-- subscription, entitlement, payment provider and signed webhook modules
+- provider-specific checkout, renewal, failure, refund and cancellation adapters\n- signing-key rotation with overlap and historical JWKS publication\n- independent OIDC conformance/security review and product SDKs
 - production HTTPS, secure storage permissions, backup/restore and key recovery procedures
 
 Do not use this implementation as a general-purpose identity provider until those remaining controls have been completed and reviewed.
