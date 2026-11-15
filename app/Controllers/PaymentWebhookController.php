@@ -58,6 +58,9 @@ final class PaymentWebhookController
         $eventId = is_array($event) && is_string($event['id'] ?? null) ? trim($event['id']) : '';
         $eventType = is_array($event) && is_string($event['type'] ?? null) ? trim($event['type']) : '';
         $data = is_array($event) && is_array($event['data'] ?? null) ? $event['data'] : null;
+        if (is_array($data) && (is_string($event['created_at'] ?? null) || is_int($event['created'] ?? null))) {
+            $data['_event_created_at'] = $event['created_at'] ?? $event['created'];
+        }
         if ($eventId === '' || strlen($eventId) > 190 || $eventType === '' || strlen($eventType) > 120
             || $data === null || preg_match('/[\x00-\x1f\x7f]/', $eventId . $eventType)) {
             $this->respond(400, ['ok' => false, 'error' => 'invalid_event']);
@@ -86,6 +89,9 @@ final class PaymentWebhookController
 
             if (in_array($eventType, ['subscription.activated', 'subscription.updated', 'subscription.canceled'], true)) {
                 $subscription = SubscriptionService::applyProviderSubscription($pdo, $provider, $eventType, $data);
+                if (!empty($subscription['stale_event'])) {
+                    $status = 'ignored';
+                }
                 $outboxData += $subscription;
                 $aggregateType = 'user';
                 $aggregateId = (string)$subscription['user_id'];
