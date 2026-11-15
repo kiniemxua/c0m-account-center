@@ -133,16 +133,17 @@ try {
                 } else {
                     $terminal = $attempt >= 12;
                     $delay = min(3600, 30 * (2 ** min(7, $attempt - 1)));
+                    $nextAttemptAt = gmdate('Y-m-d H:i:s', time() + $delay);
                     $pdo->prepare(
                         'UPDATE webhook_deliveries
                          SET status = :status, attempts = :attempts, response_status = :response,
-                             next_attempt_at = DATE_ADD(UTC_TIMESTAMP(), INTERVAL :delay SECOND), last_error = :error
+                             next_attempt_at = :next_attempt_at, last_error = :error
                          WHERE id = :id'
                     )->execute([
                         'status' => $terminal ? 'failed' : 'pending',
                         'attempts' => $attempt,
                         'response' => $responseStatus,
-                        'delay' => $delay,
+                        'next_attempt_at' => $nextAttemptAt,
                         'error' => substr((string)$errorCode, 0, 255),
                         'id' => (int)$delivery['delivery_id'],
                     ]);
