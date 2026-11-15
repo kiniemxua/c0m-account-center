@@ -33,11 +33,20 @@ final class OAuthClientController
         $type = is_string($_POST['client_type'] ?? null) ? $_POST['client_type'] : '';
         $redirectText = is_string($_POST['redirect_uris'] ?? null) ? trim($_POST['redirect_uris']) : '';
         $redirects = preg_split('/\R+/', $redirectText, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $scopes = $_POST['scopes'] ?? [];
+        $rawScopes = $_POST['scopes'] ?? [];
         if ($applicationId === false || !in_array($type, ['public', 'confidential'], true)
-            || $redirects === [] || !is_array($scopes) || $scopes === []) {
+            || $redirects === [] || !is_array($rawScopes)
+            || array_filter($rawScopes, static fn($scope): bool => !is_string($scope)) !== []) {
             http_response_code(422);
             $this->render(\App\Core\t('Check the OAuth client details.'), null);
+            return;
+        }
+        $scopes = array_values(array_unique(array_filter($rawScopes, static fn($scope): bool =>
+            is_string($scope) && in_array($scope, self::SCOPES, true)
+        )));
+        if ($scopes === []) {
+            http_response_code(422);
+            $this->render(\App\Core\t('Select one or more supported OAuth scopes.'), null);
             return;
         }
         foreach ($redirects as $uri) {
@@ -48,15 +57,7 @@ final class OAuthClientController
             }
         }
         $redirects = array_values(array_unique($redirects));
-        $scopes = array_values(array_unique(array_filter($scopes, static fn($scope): bool =>
-            is_string($scope) && in_array($scope, self::SCOPES, true)
-        )));
         sort($scopes, SORT_STRING);
-        if ($scopes === [] || count($scopes) !== count(array_unique($_POST['scopes']))) {
-            http_response_code(422);
-            $this->render(\App\Core\t('Select one or more supported OAuth scopes.'), null);
-            return;
-        }
 
         $pdo = Database::connection();
         $application = $pdo->prepare("SELECT id, name FROM applications WHERE id = :id AND status = 'active' LIMIT 1");
