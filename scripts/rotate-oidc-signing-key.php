@@ -33,7 +33,9 @@ try {
         throw new RuntimeException('The active signing-key path must not be a symbolic link.');
     }
 
-    // This also provisions the first key on a new installation.
+    if (!is_file($activePath)) {
+        throw new RuntimeException('No active signing key exists yet; allow the application to generate its first key before rotating.');
+    }
     $oldKid = \App\Core\OidcSigner::keyId();
     $oldPem = @file_get_contents($activePath);
     if (!is_string($oldPem) || $oldPem === '') {
