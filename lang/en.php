@@ -277,4 +277,6 @@ return [
 'Enable client' => 'Enable client',
 'No OAuth clients registered.' => 'No OAuth clients registered.',
 'Redirect URIs' => 'Redirect URIs',
+
+'Review active devices and recent sign-ins.' => 'Review active devices and recent sign-ins.',
 ];
