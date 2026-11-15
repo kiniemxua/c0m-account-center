@@ -130,17 +130,24 @@ try {
         return ['status' => $status, 'headers' => $rawHeaders, 'body' => $response === false ? '' : $response];
     };
 
-    $insecureRequest = $request('GET', '/login', '', '', false);
-    httpCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'Yêu cầu HTTPS'), 'The application must reject HTTP when HTTPS is not proven.');
-
-    $deadline = microtime(true) + 8;
+    // proc_open() returns before the PHP development server is accepting
+    // connections. Establish readiness using a trusted HTTPS-proxy request
+    // before asserting the deliberately insecure request; otherwise CI can
+    // observe connection status 0 and report a false HTTPS regression.
+    $startupDeadline = microtime(true) + 8;
     do {
-        $login = $request('GET', '/login');
-        if ($login['status'] === 200) {
+        $startup = $request('GET', '/login');
+        if ($startup['status'] === 200) {
             break;
         }
         usleep(50000);
-    } while (microtime(true) < $deadline);
+    } while (microtime(true) < $startupDeadline);
+    httpCheck($startup['status'] === 200, 'The HTTP test server must become ready before security assertions (status ' . $startup['status'] . ').');
+
+    $insecureRequest = $request('GET', '/login', '', '', false);
+    httpCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'Yêu cầu HTTPS'), 'The application must reject HTTP when HTTPS is not proven.');
+
+    $login = $startup;
 
     httpCheck($login['status'] === 200, 'The actual HTTP router must render the login page (status ' . $login['status'] . ', response ' . substr(strip_tags(preg_replace('/value="[a-f0-9]{64}"/', 'value="[redacted]"', $login['body'])), 0, 180) . ').');
     httpCheck(str_contains(implode("\n", $login['headers']), 'X-Content-Type-Options: nosniff'), 'HTTP security headers must be emitted by bootstrap.');
