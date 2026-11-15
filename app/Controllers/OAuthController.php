@@ -69,6 +69,7 @@ final class OAuthController
 
     public function token(): void
     {
+        $this->corsHeaders();
         $this->jsonHeaders();
         if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
             header('Allow: POST');
@@ -118,6 +119,7 @@ final class OAuthController
 
     public function revoke(): void
     {
+        $this->corsHeaders();
         $this->jsonHeaders();
         if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
             header('Allow: POST');
@@ -154,6 +156,7 @@ final class OAuthController
 
     public function userinfo(): void
     {
+        $this->corsHeaders();
         $this->jsonHeaders();
         $token = $this->bearerToken();
         $row = $token !== '' ? OAuthService::authenticateAccessToken(Database::connection(), $token) : null;
@@ -204,6 +207,7 @@ final class OAuthController
     {
         $issuer = AppConfig::baseUrl();
         $this->jsonHeaders();
+        header('Access-Control-Allow-Origin: *');
         echo json_encode([
             'issuer' => $issuer,
             'authorization_endpoint' => $issuer . '/oauth/authorize',
@@ -224,6 +228,7 @@ final class OAuthController
     public function jwks(): void
     {
         $this->jsonHeaders();
+        header('Access-Control-Allow-Origin: *');
         try {
             echo json_encode(OidcSigner::jwks(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         } catch (Throwable $e) {
@@ -417,6 +422,76 @@ final class OAuthController
     {
         $separator = str_contains($uri, '?') ? '&' : '?';
         header('Location: ' . $uri . $separator . http_build_query($params, '', '&', PHP_QUERY_RFC3986), true, 303);
+    }
+
+    public function preflight(): void
+    {
+        $this->corsHeaders();
+        if (!isset($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'])
+            || !in_array(strtoupper((string)$_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD']), ['GET', 'POST'], true)
+            || !isset($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'])) {
+            // Authorization and Content-Type are the only supported
+            // non-simple request headers for these endpoints.
+            $requested = strtolower((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ?? ''));
+            $allowed = array_map('trim', explode(',', $requested));
+            if (array_diff($allowed, ['authorization', 'content-type']) !== []) {
+                http_response_code(403);
+                return;
+            }
+        }
+        if (!empty($_SERVER['HTTP_ORIGIN']) && empty($_SERVER['HTTP_ACCESS_CONTROL_ALLOW_ORIGIN'])) {
+            http_response_code(403);
+            return;
+        }
+        http_response_code(204);
+        header('Access-Control-Max-Age: 600');
+    }
+
+    private function corsHeaders(): void
+    {
+        $origin = is_string($_SERVER['HTTP_ORIGIN'] ?? null) ? trim($_SERVER['HTTP_ORIGIN']) : '';
+        if ($origin === '' || !$this->originIsRegistered($origin)) return;
+        header('Access-Control-Allow-Origin: ' . $origin);
+        header('Vary: Origin', false);
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Authorization, Content-Type');
+        header('Access-Control-Max-Age: 600');
+    }
+
+    private function originIsRegistered(string $origin): bool
+    {
+        $originParts = parse_url($origin);
+        if (!is_array($originParts) || strtolower((string)($originParts['scheme'] ?? '')) !== 'https'
+            || empty($originParts['host']) || isset($originParts['user']) || isset($originParts['pass'])
+            || isset($originParts['query']) || isset($originParts['fragment'])
+            || (isset($originParts['path']) && $originParts['path'] !== '')) {
+            return false;
+        }
+        $normalize = static function (array $parts): string {
+            $scheme = strtolower((string)($parts['scheme'] ?? ''));
+            $host = strtolower((string)($parts['host'] ?? ''));
+            $port = isset($parts['port']) ? (int)$parts['port'] : 443;
+            return $scheme . '://' . $host . ($port === 443 ? '' : ':' . $port);
+        };
+        $candidate = $normalize($originParts);
+        $stmt = Database::connection()->query(
+            "SELECT oc.redirect_uris FROM oauth_clients oc
+             INNER JOIN applications a ON a.id = oc.application_id
+             WHERE oc.status = 'active' AND a.status = 'active'"
+        );
+        foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $redirectJson) {
+            $redirects = json_decode((string)$redirectJson, true);
+            if (!is_array($redirects)) continue;
+            foreach ($redirects as $redirect) {
+                if (!is_string($redirect)) continue;
+                $parts = parse_url($redirect);
+                if (is_array($parts) && strtolower((string)($parts['scheme'] ?? '')) === 'https'
+                    && !empty($parts['host']) && $normalize($parts) === $candidate) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private function jsonHeaders(): void
