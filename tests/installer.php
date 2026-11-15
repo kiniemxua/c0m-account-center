@@ -102,6 +102,19 @@ try {
         return $request('POST', http_build_query(['_csrf' => $csrf] + $fields), $cookie);
     };
 
+    // The PHP development server starts asynchronously. Wait for its first
+    // successful HTTP response before running locale assertions; otherwise
+    // fast CI runners can race the child process and receive an empty response.
+    $startupDeadline = microtime(true) + 8;
+    do {
+        $startup = $request('GET');
+        if ($startup['status'] === 200) {
+            break;
+        }
+        usleep(50000);
+    } while (microtime(true) < $startupDeadline);
+    installerCheck($startup['status'] === 200, 'Installer HTTP server must become ready before locale checks (status ' . $startup['status'] . ').');
+
     $englishInstaller = $request('GET', '', '', true, '/installer/?lang=en');
     installerCheck($englishInstaller['status'] === 200 && str_contains($englishInstaller['body'], '<html lang="en">'), 'Installer must render in English when the locale is explicitly selected.');
     installerCheck(str_contains($englishInstaller['body'], 'Set up your Account Center') && str_contains($englishInstaller['body'], 'Install Account Center'), 'English installer labels must use the English catalog.');
