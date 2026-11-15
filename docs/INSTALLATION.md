@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- PHP 8.2+ with pdo_mysql, mbstring, openssl and fileinfo.
+- PHP 8.2+ with pdo_mysql, mbstring, openssl, fileinfo and curl.
 - MariaDB 10.6+ or MySQL 8+.
 - HTTPS enabled for the domain.
 - A database and database user created in cPanel.
