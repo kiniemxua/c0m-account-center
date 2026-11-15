@@ -28,11 +28,16 @@ The repository contains an account/authentication foundation:
 - Super Admin application registry for creating, editing, featuring and disabling catalog entries, with transactional audit events.
 - Super Admin member-group creation, membership assignment and active/disabled lifecycle with revision updates.
 - Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
+- OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
+- OpenID Connect discovery, RS256 ID tokens, JWKS, scoped UserInfo, nonce/state validation and authorization revision output.
+- Opaque access/refresh tokens, refresh-token rotation and replay detection, token-family revocation and RFC 7009 revocation endpoint.
+- Registered-origin CORS for browser token, revocation and UserInfo calls; public discovery/JWKS endpoints.
+- CLI migration runner and OAuth client provisioning for existing installations.
 - Member profile preferences (display name, username, language and timezone).
 - Password change with current-password verification, throttling, session revocation and email notification.
 - Application and installer requests fail closed unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS; forwarded headers from untrusted clients are ignored.
 
-**Not production-ready.** Registry group grants now control whether restricted entries appear in the Account Center dashboard, but external applications still need OAuth/API enforcement and must not rely on directory visibility. No OAuth/OIDC SSO, public member API, subscription/payment processing or signed webhook delivery is implemented yet. The HTTP suite covers registry/group access, CSRF, grants, revocation, URL validation and audit behavior, but broader browser coverage, independent security review and deployment review remain outstanding. Do not treat the branch as production-ready until those gaps are closed and CI/deployment gates pass.
+**Not production-ready.** OAuth2/OIDC authorization-code SSO, scoped UserInfo and token lifecycle are now implemented and covered by HTTP integration tests, but the provider still needs an independent protocol/security review, signing-key rotation, rate limiting and a browser-based OAuth client administration/secret-rotation UI. Subscription plans, entitlements, payment processing, signed payment webhooks and transactional event delivery are not implemented yet. External applications must validate tokens and enforce authorization server-side; dashboard visibility is never an authorization boundary. Do not accept production accounts or financial activity until the remaining modules, security review and deployment gates are complete.
 
 ## cPanel installation
 
@@ -48,7 +53,8 @@ See docs/INSTALLATION.md, docs/LOCALIZATION.md, docs/MAIL.md, docs/SECURITY.md, 
 ## Documentation map
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): system overview, runtime layers and security architecture.
-- [docs/API.md](docs/API.md): current HTTP patterns and future API contract direction.
+- [docs/API.md](docs/API.md): current HTTP patterns and integration API contract.
+- [docs/OAUTH.md](docs/OAUTH.md): OAuth2/OIDC endpoints, PKCE flow, client provisioning and operational limitations.
 - [docs/INSTALLATION.md](docs/INSTALLATION.md): deployment and reverse-proxy setup guidance.
 - [docs/LOCALIZATION.md](docs/LOCALIZATION.md): locale selection, catalog maintenance and validation.
 - [docs/MAIL.md](docs/MAIL.md): SMTP and development mail configuration.
