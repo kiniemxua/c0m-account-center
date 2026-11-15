@@ -83,7 +83,7 @@ assertIntegration($billingPermissionMigration !== false, 'Billing permission mig
 $pdo->exec($billingPermissionMigration);
 $eventOrderingMigration = file_get_contents(BASE_PATH . '/database/migrations/012_subscription_event_ordering.sql');
 assertIntegration($eventOrderingMigration !== false, 'Subscription event ordering migration must exist.');
-$pdo->exec($eventOrderingMigration);
+if (!in_array('provider_event_created_at', array_column($pdo->query('SHOW COLUMNS FROM subscriptions')->fetchAll(), 'Field'), true)) { $pdo->exec($eventOrderingMigration); }
 
 $memberGroupsMigration = file_get_contents(BASE_PATH . '/database/migrations/005_member_groups.sql');
 assertIntegration($memberGroupsMigration !== false, 'Member group migration must exist.');
