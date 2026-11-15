@@ -10,8 +10,6 @@ spl_autoload_register(static function (string $class): void {
     if (is_file($file)) require $file;
 });
 
-use App\Core\OidcSigner;
-
 $storage = BASE_PATH . '/storage';
 if (!is_dir($storage) && !mkdir($storage, 0750, true) && !is_dir($storage)) {
     fwrite(STDERR, "OIDC signing storage is unavailable.\n");
@@ -31,7 +29,7 @@ try {
     }
 
     // This also provisions the first key on a new installation.
-    $oldKid = OidcSigner::keyId();
+    $oldKid = \App\Core\OidcSigner::keyId();
     $oldPem = @file_get_contents($activePath);
     if (!is_string($oldPem) || $oldPem === '') {
         throw new RuntimeException('The current signing key is unreadable.');
@@ -81,10 +79,10 @@ try {
             throw new RuntimeException('A different public key already exists for the current key ID.');
         }
     } else {
-        atomicWrite($previousPath, $oldDetails['key'], 0640);
+        oidcAtomicWrite($previousPath, $oldDetails['key'], 0640);
     }
 
-    atomicWrite($activePath, $newPem, 0600);
+    oidcAtomicWrite($activePath, $newPem, 0600);
     fwrite(STDOUT, "OIDC signing key rotated successfully.\n");
     fwrite(STDOUT, "Previous key ID: {$oldKid}\n");
     fwrite(STDOUT, "Active key ID:   {$newKid}\n");
@@ -102,7 +100,7 @@ try {
 /**
  * Persist a file through a same-directory temporary file and atomic rename.
  */
-function atomicWrite(string $path, string $contents, int $mode): void
+function oidcAtomicWrite(string $path, string $contents, int $mode): void
 {
     $temporary = $path . '.' . bin2hex(random_bytes(8)) . '.tmp';
     try {
