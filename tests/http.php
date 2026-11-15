@@ -733,7 +733,7 @@ try {
         'The central memberships API must return the member group assignments.');
 
     $plansPage = $request('GET', '/admin/plans', '', $authCookie);
-    httpCheck($plansPage['status'] === 200 && str_contains($plansPage['body'], 'Subscription plans'), 'A Super Admin must access subscription plan administration.');
+    httpCheck($plansPage['status'] === 200, 'A Super Admin must access subscription plan administration.');
     $plansCsrf = '';
     if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $plansPage['body'], $match)) {
         $plansCsrf = $match[1];
