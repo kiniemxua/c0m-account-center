@@ -28,7 +28,8 @@ The repository contains an account/authentication foundation:
 - Super Admin application registry for creating, editing, featuring and disabling catalog entries, with transactional audit events.
 - Super Admin member-group creation, membership assignment and active/disabled lifecycle with revision updates.
 - Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
-- Versioned member APIs for profile, active groups, group memberships, effective roles/permissions and subscription entitlements, all protected by scoped OAuth bearer tokens and authorization revisions.\n- OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
+- Versioned member APIs for profile, active groups, group memberships, effective roles/permissions and subscription entitlements, all protected by scoped OAuth bearer tokens and authorization revisions.
+- OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
 - OpenID Connect discovery, RS256 ID tokens, JWKS, scoped UserInfo, nonce/state validation and authorization revision output.
 - Opaque access/refresh tokens, refresh-token rotation and replay detection, token-family revocation and RFC 7009 revocation endpoint.
 - Registered-origin CORS for browser token, revocation and UserInfo calls; public discovery/JWKS endpoints.
