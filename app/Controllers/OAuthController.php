@@ -110,6 +110,7 @@ final class OAuthController
                     return;
                 }
             } else {
+                $this->recordGrantFailure($client);
                 $this->jsonError(400, 'unsupported_grant_type', 'Only authorization_code and refresh_token are supported.');
                 return;
             }
