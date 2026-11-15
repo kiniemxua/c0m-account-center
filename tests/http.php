@@ -808,6 +808,59 @@ try {
         && ($entitlementApiData['data']['entitlements']['feature.forum_access']['value'] ?? false) === true
         && ($entitlementApiData['data']['entitlements']['quota.subdomains']['value'] ?? null) === 10,
         'The scoped entitlement API must return the current member features and quotas.');
+
+    $revisionBeforePlanEdit = (int)$pdo->query('SELECT revision FROM user_authorization_revisions WHERE user_id = ' . (int)$testUserId)->fetchColumn();
+    $editPlanPage = $request('GET', '/admin/plans?edit=' . $planId, '', $authCookie);
+    $editPlanCsrf = '';
+    if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $editPlanPage['body'], $match)) {
+        $editPlanCsrf = $match[1];
+    }
+    httpCheck($editPlanPage['status'] === 200 && $editPlanCsrf !== '', 'A Super Admin must be able to edit an existing plan.');
+    $planUpdate = $request('POST', '/admin/plans/save', http_build_query([
+        '_csrf' => $editPlanCsrf,
+        'id' => (string)$planId,
+        'plan_key' => $planKey,
+        'name' => 'HTTP Pro Updated',
+        'description' => 'Updated HTTP plan test.',
+        'price_minor' => '1500',
+        'currency' => 'USD',
+        'billing_interval' => 'month',
+        'features_json' => '{"forum_access":true,"custom_domain":true,"ai_member":true}',
+        'quotas_json' => '{"subdomains":15,"storage_mb":2048}',
+        'status' => 'active',
+        'sort_order' => '10',
+    ]), $authCookie);
+    httpCheck($planUpdate['status'] === 303, 'A Super Admin must update a subscription plan.');
+    $entitlementRows->execute(['user' => $testUserId]);
+    $updatedEntitlementMap = [];
+    foreach ($entitlementRows->fetchAll() as $entitlementRow) {
+        $updatedEntitlementMap[$entitlementRow['entitlement_key']] = json_decode($entitlementRow['entitlement_value'], true);
+    }
+    $revisionAfterPlanEdit = (int)$pdo->query('SELECT revision FROM user_authorization_revisions WHERE user_id = ' . (int)$testUserId)->fetchColumn();
+    httpCheck(($updatedEntitlementMap['feature.ai_member'] ?? false) === true
+        && ($updatedEntitlementMap['quota.subdomains'] ?? null) === 15
+        && ($updatedEntitlementMap['quota.storage_mb'] ?? null) === 2048
+        && $revisionAfterPlanEdit > $revisionBeforePlanEdit,
+        'Editing a plan must synchronize active member entitlements and advance authorization revision.');
+    $archiveAttempt = $request('POST', '/admin/plans/save', http_build_query([
+        '_csrf' => $editPlanCsrf,
+        'id' => (string)$planId,
+        'plan_key' => $planKey,
+        'name' => 'HTTP Pro Updated',
+        'description' => 'Updated HTTP plan test.',
+        'price_minor' => '1500',
+        'currency' => 'USD',
+        'billing_interval' => 'month',
+        'features_json' => '{"forum_access":true,"custom_domain":true,"ai_member":true}',
+        'quotas_json' => '{"subdomains":15,"storage_mb":2048}',
+        'status' => 'archived',
+        'sort_order' => '10',
+    ]), $authCookie);
+    httpCheck($archiveAttempt['status'] === 422, 'A plan with current subscriptions must not be archived.');
+    $planStatusCheck = $pdo->prepare('SELECT status FROM subscription_plans WHERE id = :id');
+    $planStatusCheck->execute(['id' => $planId]);
+    httpCheck($planStatusCheck->fetchColumn() === 'active', 'A rejected plan archive must leave the active plan unchanged.');
+
     $duplicatePaymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, $paymentHeaders);
     httpCheck($duplicatePaymentWebhook['status'] === 200 && str_contains($duplicatePaymentWebhook['body'], '"duplicate":true'),
         'A repeated provider event must be idempotently acknowledged without reapplying entitlements.');
