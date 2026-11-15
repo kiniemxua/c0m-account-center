@@ -17,6 +17,7 @@ use App\Controllers\OAuthController;
 use App\Controllers\OAuthClientController;
 use App\Controllers\PaymentWebhookController;
 use App\Controllers\EntitlementController;
+use App\Controllers\AccountApiController;
 
 $router = new Router();
 $router->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
