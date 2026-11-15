@@ -73,15 +73,42 @@ final class OidcSigner
     public static function jwks(): array
     {
         self::load();
+        $keys = [self::jwkFromDetails(self::$details, (string)self::$keyId)];
+        $previousDirectory = BASE_PATH . '/storage/oauth-signing-previous';
+        if (is_dir($previousDirectory)) {
+            $minimumCreatedAt = time() - 86400;
+            foreach (glob($previousDirectory . '/*.pem') ?: [] as $path) {
+                $createdAt = @filemtime($path);
+                if (!is_int($createdAt) || $createdAt < $minimumCreatedAt || $createdAt > time() + 60) {
+                    continue;
+                }
+                $publicPem = @file_get_contents($path);
+                if (!is_string($publicPem) || $publicPem === '') continue;
+                $publicKey = openssl_pkey_get_public($publicPem);
+                if (!$publicKey) continue;
+                $details = openssl_pkey_get_details($publicKey);
+                if (!is_array($details) || ($details['type'] ?? null) !== OPENSSL_KEYTYPE_RSA
+                    || (int)($details['bits'] ?? 0) < 2048
+                    || !isset($details['key'], $details['rsa']['n'], $details['rsa']['e'])) {
+                    continue;
+                }
+                $kid = substr(hash('sha256', $details['key']), 0, 24);
+                if ($kid === self::$keyId || basename($path, '.pem') !== $kid) continue;
+                $keys[$kid] = self::jwkFromDetails($details, $kid);
+            }
+        }
+        return ['keys' => array_values($keys)];
+    }
+
+    private static function jwkFromDetails(array $details, string $kid): array
+    {
         return [
-            'keys' => [[
-                'kty' => 'RSA',
-                'use' => 'sig',
-                'alg' => 'RS256',
-                'kid' => self::$keyId,
-                'n' => OAuthService::base64UrlEncode(self::$details['rsa']['n']),
-                'e' => OAuthService::base64UrlEncode(self::$details['rsa']['e']),
-            ]],
+            'kty' => 'RSA',
+            'use' => 'sig',
+            'alg' => 'RS256',
+            'kid' => $kid,
+            'n' => OAuthService::base64UrlEncode($details['rsa']['n']),
+            'e' => OAuthService::base64UrlEncode($details['rsa']['e']),
         ];
     }
 }
