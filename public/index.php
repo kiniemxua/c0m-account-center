@@ -14,6 +14,7 @@ use App\Controllers\MemberGroupController;
 use App\Controllers\AccountController;
 use App\Controllers\LanguageController;
 use App\Controllers\OAuthController;
+use App\Controllers\OAuthClientController;
 
 $router = new Router();
 $router->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
@@ -50,6 +51,10 @@ $router->post('/admin/users/role', [AdminController::class, 'assignRole']);
 $router->get('/admin/settings', [AdminController::class, 'settings']);
 $router->get('/admin/audit', [AdminController::class, 'audit']);
 $router->get('/admin/applications', [ApplicationRegistryController::class, 'index']);
+$router->get('/admin/oauth-clients', [OAuthClientController::class, 'index']);
+$router->post('/admin/oauth-clients/create', [OAuthClientController::class, 'create']);
+$router->post('/admin/oauth-clients/rotate', [OAuthClientController::class, 'rotateSecret']);
+$router->post('/admin/oauth-clients/status', [OAuthClientController::class, 'setStatus']);
 $router->post('/admin/applications/save', [ApplicationRegistryController::class, 'save']);
 $router->get('/admin/groups', [MemberGroupController::class, 'index']);
 $router->post('/admin/groups', [MemberGroupController::class, 'save']);
