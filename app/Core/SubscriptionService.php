@@ -46,7 +46,7 @@ final class SubscriptionService
         }
 
         $find = $pdo->prepare(
-            'SELECT id, user_id FROM subscriptions
+            'SELECT id, user_id, provider_event_created_at FROM subscriptions
              WHERE provider = :provider AND provider_subscription_id = :subscription
              LIMIT 1 FOR UPDATE'
         );
@@ -55,13 +55,25 @@ final class SubscriptionService
         if ($existing && (int)$existing['user_id'] !== (int)$userId) {
             throw new RuntimeException('subscription_owner_mismatch');
         }
+        $eventCreatedAt = self::dateValue($data['_event_created_at'] ?? null);
+        if ($existing && $existing['provider_event_created_at'] !== null
+            && ($eventCreatedAt === null || $eventCreatedAt < $existing['provider_event_created_at'])) {
+            return [
+                'subscription_id' => (int)$existing['id'],
+                'user_id' => (int)$userId,
+                'status' => 'stale',
+                'plan_key' => $planKey,
+                'authorization_revision' => null,
+                'stale_event' => true,
+            ];
+        }
         if ($existing) {
             $subscriptionId = (int)$existing['id'];
             $update = $pdo->prepare(
                 'UPDATE subscriptions SET plan_id = :plan, status = :status,
                     provider_customer_id = :customer, current_period_start = :period_start,
                     current_period_end = :period_end, cancel_at_period_end = :cancel_at_period_end,
-                    canceled_at = :canceled_at, updated_at = UTC_TIMESTAMP()
+                    canceled_at = :canceled_at, provider_event_created_at = COALESCE(:event_created_at, provider_event_created_at), updated_at = UTC_TIMESTAMP()
                  WHERE id = :id'
             );
             $update->execute([
@@ -72,15 +84,16 @@ final class SubscriptionService
                 'period_end' => $periodEnd,
                 'cancel_at_period_end' => $cancelAtPeriodEnd,
                 'canceled_at' => $status === 'canceled' ? gmdate('Y-m-d H:i:s') : null,
+                'event_created_at' => $eventCreatedAt,
                 'id' => $subscriptionId,
             ]);
         } else {
             $insert = $pdo->prepare(
                 'INSERT INTO subscriptions
                     (user_id, plan_id, status, provider, provider_customer_id, provider_subscription_id,
-                     current_period_start, current_period_end, cancel_at_period_end, canceled_at)
+                     current_period_start, current_period_end, cancel_at_period_end, canceled_at, provider_event_created_at)
                  VALUES (:user, :plan, :status, :provider, :customer, :subscription,
-                         :period_start, :period_end, :cancel_at_period_end, :canceled_at)'
+                         :period_start, :period_end, :cancel_at_period_end, :canceled_at, :event_created_at)'
             );
             $insert->execute([
                 'user' => (int)$userId,
@@ -93,6 +106,7 @@ final class SubscriptionService
                 'period_end' => $periodEnd,
                 'cancel_at_period_end' => $cancelAtPeriodEnd,
                 'canceled_at' => $status === 'canceled' ? gmdate('Y-m-d H:i:s') : null,
+                'event_created_at' => $eventCreatedAt,
             ]);
             $subscriptionId = (int)$pdo->lastInsertId();
         }
