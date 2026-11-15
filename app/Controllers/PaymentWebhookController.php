@@ -84,7 +84,7 @@ final class PaymentWebhookController
             $aggregateId = $eventId;
             $status = 'processed';
 
-            if (str_starts_with($eventType, 'subscription.')) {
+            if (in_array($eventType, ['subscription.activated', 'subscription.updated', 'subscription.canceled'], true)) {
                 $subscription = SubscriptionService::applyProviderSubscription($pdo, $provider, $eventType, $data);
                 $outboxData += $subscription;
                 $aggregateType = 'user';
