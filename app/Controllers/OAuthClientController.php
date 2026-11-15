@@ -12,7 +12,7 @@ use Throwable;
 
 final class OAuthClientController
 {
-    private const SCOPES = ['openid', 'profile', 'email', 'groups', 'permissions'];
+    private const SCOPES = ['openid', 'profile', 'email', 'groups', 'permissions', 'entitlements'];
 
     public function index(): void
     {

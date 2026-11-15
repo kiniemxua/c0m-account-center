@@ -14,8 +14,9 @@ function httpCheck(bool $condition, string $message): void
 $dbConfigPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
 $mailConfigPath = BASE_PATH . '/config/mail.php';
+$paymentConfigPath = BASE_PATH . '/config/payments.php';
 $mailLogPath = BASE_PATH . '/storage/mail.log';
-if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath) || is_file($mailLogPath)) {
+if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath) || is_file($paymentConfigPath) || is_file($mailLogPath)) {
     throw new RuntimeException('HTTP test refuses to overwrite an existing database config.');
 }
 $dbConfig = [
@@ -24,6 +25,7 @@ $dbConfig = [
     'name' => getenv('DB_NAME') ?: 'c0m_test',
     'user' => getenv('DB_USER') ?: 'root',
     'password' => getenv('DB_PASSWORD') ?: '',
+    'app_key' => bin2hex(random_bytes(32)),
 ];
 if (!is_dir(BASE_PATH . '/config')) {
     throw new RuntimeException('Config directory is missing.');
@@ -31,6 +33,19 @@ if (!is_dir(BASE_PATH . '/config')) {
 $configSource = "<?php\ndeclare(strict_types=1);\nreturn " . var_export($dbConfig, true) . ";\n";
 if (file_put_contents($dbConfigPath, $configSource, LOCK_EX) === false) {
     throw new RuntimeException('Could not create temporary HTTP test configuration.');
+}
+require_once BASE_PATH . '/app/Core/Crypto.php';
+$cryptoSecret = bin2hex(random_bytes(32));
+$encryptedSecret = App\Core\Crypto::encrypt($cryptoSecret);
+httpCheck(!str_contains($encryptedSecret, $cryptoSecret), 'Webhook secrets must be encrypted at rest.');
+httpCheck(App\Core\Crypto::decrypt($encryptedSecret) === $cryptoSecret, 'Webhook secret encryption must round-trip.');
+$encryptedPayload = base64_decode($encryptedSecret, true);
+$encryptedPayload[strlen($encryptedPayload) - 1] = chr(ord($encryptedPayload[strlen($encryptedPayload) - 1]) ^ 1);
+try {
+    App\Core\Crypto::decrypt(base64_encode($encryptedPayload));
+    throw new RuntimeException('Tampered encrypted webhook secrets must be rejected.');
+} catch (RuntimeException $e) {
+    httpCheck($e->getMessage() !== 'Tampered encrypted webhook secrets must be rejected.', 'Authenticated encryption must reject modified ciphertext.');
 }
 if (file_put_contents($appConfigPath, "<?php return ['base_url' => 'https://accounts.example.test', 'trusted_proxies' => ['127.0.0.1']];", LOCK_EX) === false) {
     @unlink($dbConfigPath);
@@ -41,12 +56,23 @@ if (file_put_contents($mailConfigPath, "<?php return ['mode' => 'development_log
     @unlink($appConfigPath);
     throw new RuntimeException('Could not create temporary development mail configuration.');
 }
+$paymentTestSecret = bin2hex(random_bytes(32));
+$paymentConfigSource = "<?php return " . var_export(['providers' => ['generic' => ['webhook_secret' => $paymentTestSecret]]], true) . ";";
+if (file_put_contents($paymentConfigPath, $paymentConfigSource, LOCK_EX) === false) {
+    @unlink($dbConfigPath);
+    @unlink($appConfigPath);
+    @unlink($mailConfigPath);
+    throw new RuntimeException('Could not create temporary payment webhook configuration.');
+}
 
 $pdo = null;
 $testUserId = null;
 $registryAppId = null;
 $registryGroupId = null;
 $flowEmail = null;
+$planKey = null;
+$paymentEventId = null;
+$paymentEventIds = [];
 $process = null;
 $pipes = [];
 $serverStdoutPath = '';
@@ -113,7 +139,7 @@ try {
         if ($cookie !== '') {
             $headers[] = 'Cookie: ' . $cookie;
         }
-        if ($method === 'POST') {
+        if ($method === 'POST' && !array_filter($headers, static fn($header): bool => stripos($header, 'Content-Type:') === 0)) {
             $headers[] = 'Content-Type: application/x-www-form-urlencoded';
         }
         $context = stream_context_create(['http' => [
@@ -565,7 +591,7 @@ try {
     }
     httpCheck($oauthAdminCsrf !== '', 'OAuth client management must expose CSRF protection.');
     $oauthRedirect = 'https://oauth.example.test/callback';
-    $oauthScopes = ['openid', 'profile', 'email', 'groups', 'permissions'];
+    $oauthScopes = ['openid', 'profile', 'email', 'groups', 'permissions', 'entitlements'];
     $oauthClientCreate = $request('POST', '/admin/oauth-clients/create', http_build_query([
         '_csrf' => $oauthAdminCsrf,
         'application_id' => (string)$registryAppId,
@@ -672,6 +698,129 @@ try {
         && in_array($groupKey, $userinfoData['groups'] ?? [], true)
         && array_key_exists('authorization_revision', $userinfoData),
         'OIDC userinfo must return only scoped member claims and the authorization revision.');
+
+    $planKey = 'http-pro-' . bin2hex(random_bytes(4));
+    $pdo->prepare(
+        "INSERT INTO subscription_plans
+            (plan_key, name, description, price_minor, currency, billing_interval, features, quotas, status)
+         VALUES (:key, 'HTTP Pro', 'HTTP webhook test plan', 1200, 'USD', 'month', :features, :quotas, 'active')"
+    )->execute([
+        'key' => $planKey,
+        'features' => json_encode(['forum_access' => true, 'custom_domain' => true], JSON_THROW_ON_ERROR),
+        'quotas' => json_encode(['subdomains' => 10, 'storage_mb' => 1024], JSON_THROW_ON_ERROR),
+    ]);
+    $paymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $paymentEventId;
+    $providerSubscriptionId = 'sub-' . bin2hex(random_bytes(8));
+    $paymentEventBody = json_encode([
+        'id' => $paymentEventId,
+        'type' => 'subscription.activated',
+        'data' => [
+            'user_id' => $testUserId,
+            'plan_key' => $planKey,
+            'provider_subscription_id' => $providerSubscriptionId,
+            'provider_customer_id' => 'cus-http-test',
+            'status' => 'active',
+            'current_period_start' => gmdate('c'),
+            'current_period_end' => gmdate('c', time() + 30 * 86400),
+            'cancel_at_period_end' => false,
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $paymentTimestamp = (string)time();
+    $paymentSignature = hash_hmac('sha256', $paymentTimestamp . '.' . $paymentEventBody, $paymentTestSecret);
+    $paymentHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentTimestamp . ',v1=' . $paymentSignature,
+    ];
+    $paymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, $paymentHeaders);
+    httpCheck($paymentWebhook['status'] === 200 && str_contains($paymentWebhook['body'], '"ok":true'), 'A correctly signed subscription webhook must be accepted.');
+    $subscriptionLookup = $pdo->prepare('SELECT id, status FROM subscriptions WHERE user_id = :user AND provider = :provider');
+    $subscriptionLookup->execute(['user' => $testUserId, 'provider' => 'generic']);
+    $subscriptionRow = $subscriptionLookup->fetch();
+    httpCheck($subscriptionRow && $subscriptionRow['status'] === 'active', 'A verified subscription webhook must activate the member subscription.');
+    $entitlementRows = $pdo->prepare("SELECT entitlement_key, entitlement_value FROM user_entitlements WHERE user_id = :user AND status = 'active'");
+    $entitlementRows->execute(['user' => $testUserId]);
+    $entitlementMap = [];
+    foreach ($entitlementRows->fetchAll() as $entitlementRow) {
+        $entitlementMap[$entitlementRow['entitlement_key']] = json_decode($entitlementRow['entitlement_value'], true);
+    }
+    httpCheck(($entitlementMap['feature.forum_access'] ?? false) === true
+        && ($entitlementMap['quota.subdomains'] ?? null) === 10
+        && ($entitlementMap['quota.storage_mb'] ?? null) === 1024,
+        'Subscription plan features and quotas must become member entitlements.');
+    $entitlementApi = $request('GET', '/api/v1/me/entitlements', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $entitlementApiData = json_decode($entitlementApi['body'], true);
+    httpCheck($entitlementApi['status'] === 200 && is_array($entitlementApiData)
+        && ($entitlementApiData['data']['entitlements']['feature.forum_access']['value'] ?? false) === true
+        && ($entitlementApiData['data']['entitlements']['quota.subdomains']['value'] ?? null) === 10,
+        'The scoped entitlement API must return the current member features and quotas.');
+    $duplicatePaymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, $paymentHeaders);
+    httpCheck($duplicatePaymentWebhook['status'] === 200 && str_contains($duplicatePaymentWebhook['body'], '"duplicate":true'),
+        'A repeated provider event must be idempotently acknowledged without reapplying entitlements.');
+    $outboxCount = $pdo->prepare('SELECT COUNT(*) FROM event_outbox WHERE event_key = :key');
+    $outboxCount->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
+    httpCheck((int)$outboxCount->fetchColumn() === 1, 'A processed payment webhook must create exactly one transactional outbox event.');
+
+    $scheduledEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $scheduledEventId;
+    $scheduledBody = json_encode([
+        'id' => $scheduledEventId,
+        'type' => 'subscription.canceled',
+        'data' => [
+            'user_id' => $testUserId,
+            'plan_key' => $planKey,
+            'provider_subscription_id' => $providerSubscriptionId,
+            'status' => 'canceled',
+            'current_period_start' => gmdate('c', time() - 86400),
+            'current_period_end' => gmdate('c', time() + 20 * 86400),
+            'cancel_at_period_end' => true,
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $scheduledTimestamp = (string)time();
+    $scheduledSignature = hash_hmac('sha256', $scheduledTimestamp . '.' . $scheduledBody, $paymentTestSecret);
+    $scheduledHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $scheduledTimestamp . ',v1=' . $scheduledSignature,
+    ];
+    $scheduledCancellation = $request('POST', '/api/v1/webhooks/payments', $scheduledBody, '', true, $scheduledHeaders);
+    httpCheck($scheduledCancellation['status'] === 200, 'A scheduled subscription cancellation must be accepted.');
+    $activeEntitlementCount = $pdo->prepare("SELECT COUNT(*) FROM user_entitlements WHERE user_id = :user AND status = 'active' AND (valid_until IS NULL OR valid_until > UTC_TIMESTAMP())");
+    $activeEntitlementCount->execute(['user' => $testUserId]);
+    httpCheck((int)$activeEntitlementCount->fetchColumn() >= 4, 'Entitlements must remain valid until the scheduled period end.');
+
+    $immediateEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $immediateEventId;
+    $immediateBody = json_encode([
+        'id' => $immediateEventId,
+        'type' => 'subscription.canceled',
+        'data' => [
+            'user_id' => $testUserId,
+            'plan_key' => $planKey,
+            'provider_subscription_id' => $providerSubscriptionId,
+            'status' => 'canceled',
+            'current_period_start' => gmdate('c', time() - 86400),
+            'current_period_end' => gmdate('c', time() - 1),
+            'cancel_at_period_end' => false,
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $immediateTimestamp = (string)time();
+    $immediateSignature = hash_hmac('sha256', $immediateTimestamp . '.' . $immediateBody, $paymentTestSecret);
+    $immediateCancellation = $request('POST', '/api/v1/webhooks/payments', $immediateBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $immediateTimestamp . ',v1=' . $immediateSignature,
+    ]);
+    httpCheck($immediateCancellation['status'] === 200, 'An immediate subscription cancellation must be accepted.');
+    $activeEntitlementCount->execute(['user' => $testUserId]);
+    httpCheck((int)$activeEntitlementCount->fetchColumn() === 0, 'Immediate cancellation must revoke the member entitlements.');
+    $badPaymentWebhook = $request('POST', '/api/v1/webhooks/payments', $paymentEventBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentTimestamp . ',v1=' . str_repeat('0', 64),
+    ]);
+    httpCheck($badPaymentWebhook['status'] === 401, 'An invalid payment webhook signature must be rejected.');
 
     $refreshResponse = $request('POST', '/oauth/token', http_build_query([
         'grant_type' => 'refresh_token',
@@ -866,6 +1015,7 @@ try {
     @unlink($dbConfigPath);
     @unlink($appConfigPath);
     @unlink($mailConfigPath);
+    @unlink($paymentConfigPath);
     @unlink($mailLogPath);
     if ($pdo instanceof PDO) {
         if (is_string($flowEmail)) {
@@ -882,7 +1032,18 @@ try {
                     ->execute(['id' => (string)$registryGroupId]);
                 $pdo->prepare('DELETE FROM member_groups WHERE id = :id')->execute(['id' => $registryGroupId]);
             }
+            $pdo->prepare('DELETE FROM subscriptions WHERE user_id = :id')->execute(['id' => $testUserId]);
+            $pdo->prepare('DELETE FROM payment_transactions WHERE user_id = :id')->execute(['id' => $testUserId]);
             $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
+        }
+        foreach ($paymentEventIds as $eventId) {
+            $pdo->prepare('DELETE FROM payment_webhook_events WHERE provider = :provider AND provider_event_id = :event')
+                ->execute(['provider' => 'generic', 'event' => $eventId]);
+            $pdo->prepare('DELETE FROM event_outbox WHERE event_key = :key')
+                ->execute(['key' => hash('sha256', 'generic:' . $eventId)]);
+        }
+        if (is_string($planKey)) {
+            $pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $planKey]);
         }
     }
 }

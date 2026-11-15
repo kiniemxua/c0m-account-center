@@ -48,7 +48,7 @@ try {
     if ($existing->fetchColumn() !== false) throw new RuntimeException('This application already has an OAuth client. Rotate or update it through the admin console.');
     $clientId = bin2hex(random_bytes(32));
     $secret = $type === 'confidential' ? bin2hex(random_bytes(48)) : null;
-    $scopes = ['openid', 'profile', 'email', 'groups', 'permissions'];
+    $scopes = ['openid', 'profile', 'email', 'groups', 'permissions', 'entitlements'];
     $insert = $pdo->prepare(
         'INSERT INTO oauth_clients (application_id, client_id, client_secret_hash, client_type, redirect_uris, allowed_scopes, status)
          VALUES (:app, :client, :secret_hash, :type, :redirects, :scopes, \'active\')'

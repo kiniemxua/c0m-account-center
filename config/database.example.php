@@ -7,4 +7,5 @@ return [
     'name' => 'c0m_account',
     'user' => 'CHANGE_ME',
     'password' => 'CHANGE_ME',
+    'app_key' => 'REPLACE_WITH_64_RANDOM_HEX_CHARACTERS',
 ];

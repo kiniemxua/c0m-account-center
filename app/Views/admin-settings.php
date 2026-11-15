@@ -1,21 +1,9 @@
 <!doctype html>
 <html lang="<?= \App\Core\Localization::current() ?>">
-<head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title><?= \App\Core\t('Account settings') ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css">
-</head>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?= \App\Core\t('Account settings') ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css"></head>
 <body><?php require __DIR__ . '/partials/language-switcher.php'; ?>
-<main class="auth-wrap">
-<a class="brand" href="/dashboard">c0m.me</a>
-<?php if ($canViewAudit): ?><a class="nav-link" href="/admin/audit"><?= \App\Core\t('Audit log') ?></a><?php endif; ?>
-<section class="auth-card">
-<span class="eyebrow"><?= \App\Core\t('ADMIN SETTINGS') ?></span>
-<h1><?= \App\Core\t('Registration') ?></h1>
-<p><?= \App\Core\t('Control whether new member accounts can be created.') ?></p>
-<form method="post" action="/admin/settings">
-<input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>">
-<label><input type="checkbox" name="registration_enabled" value="1" <?= $enabled ? 'checked' : '' ?>> <?= \App\Core\t('Allow new registrations') ?></label>
-<button class="button full" type="submit"><?= \App\Core\t('Save settings') ?></button>
-</form>
-<small><a href="/admin/users"><?= \App\Core\t('Manage members') ?></a></small>
-</section></main></body></html>
+<main class="shell">
+<nav class="nav"><a class="brand" href="/dashboard">c0m.me</a><div><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a><a class="nav-link" href="/admin/applications"><?= \App\Core\t('Applications') ?></a><a class="nav-link" href="/admin/groups"><?= \App\Core\t('Member groups') ?></a><a class="nav-link" href="/admin/oauth-clients"><?= \App\Core\t('OAuth clients') ?></a><?php if ($canViewAudit): ?><a class="nav-link" href="/admin/audit"><?= \App\Core\t('Audit log') ?></a><?php endif; ?></div></nav>
+<section class="hero compact"><span class="eyebrow"><?= \App\Core\t('ADMIN SETTINGS') ?></span><h1><?= \App\Core\t('Registration') ?></h1><p><?= \App\Core\t('Control whether new member accounts can be created.') ?></p></section>
+<section class="auth-card" style="max-width:620px"><form method="post" action="/admin/settings"><input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>"><label><input type="checkbox" name="registration_enabled" value="1" <?= $enabled ? 'checked' : '' ?>> <?= \App\Core\t('Allow new registrations') ?></label><button class="button" type="submit"><?= \App\Core\t('Save settings') ?></button></form></section>
+</main></body></html>
