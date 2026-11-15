@@ -18,6 +18,7 @@ use App\Controllers\OAuthClientController;
 use App\Controllers\PaymentWebhookController;
 use App\Controllers\EntitlementController;
 use App\Controllers\AccountApiController;
+use App\Controllers\SubscriptionPlanController;
 
 $router = new Router();
 $router->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
@@ -66,6 +67,8 @@ $router->get('/admin/settings', [AdminController::class, 'settings']);
 $router->get('/admin/audit', [AdminController::class, 'audit']);
 $router->get('/admin/applications', [ApplicationRegistryController::class, 'index']);
 $router->get('/admin/oauth-clients', [OAuthClientController::class, 'index']);
+$router->get('/admin/plans', [SubscriptionPlanController::class, 'index']);
+$router->post('/admin/plans/save', [SubscriptionPlanController::class, 'save']);
 $router->post('/admin/oauth-clients/create', [OAuthClientController::class, 'create']);
 $router->post('/admin/oauth-clients/rotate', [OAuthClientController::class, 'rotateSecret']);
 $router->post('/admin/oauth-clients/status', [OAuthClientController::class, 'setStatus']);

@@ -27,6 +27,7 @@ The repository contains an account/authentication foundation:
 - Transactional admin status/role changes and audit events.
 - Super Admin application registry for creating, editing, featuring and disabling catalog entries, with transactional audit events.
 - Super Admin member-group creation, membership assignment and active/disabled lifecycle with revision updates.
+- Super Admin subscription-plan management with validated feature/quota JSON, immutable plan keys, archive safeguards and transactional entitlement synchronization.
 - Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
 - Versioned member APIs for profile, active groups, group memberships, effective roles/permissions and subscription entitlements, all protected by scoped OAuth bearer tokens and authorization revisions.
 - OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
