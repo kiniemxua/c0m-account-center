@@ -222,7 +222,7 @@ final class OAuthController
             'scopes_supported' => ['openid', 'profile', 'email', 'groups', 'permissions', 'entitlements'],
             'token_endpoint_auth_methods_supported' => ['client_secret_basic', 'none'],
             'code_challenge_methods_supported' => ['S256'],
-            'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'name', 'preferred_username', 'picture', 'email', 'email_verified'],
+            'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'name', 'preferred_username', 'picture', 'email', 'email_verified', 'groups', 'permissions', 'authorization_revision'],
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
     }
 
