@@ -116,6 +116,42 @@ final class OAuthController
         }
     }
 
+    public function revoke(): void
+    {
+        $this->jsonHeaders();
+        if (strtoupper((string)($_SERVER['REQUEST_METHOD'] ?? 'GET')) !== 'POST') {
+            header('Allow: POST');
+            $this->jsonError(405, 'invalid_request', 'POST is required.');
+            return;
+        }
+        $client = $this->authenticateClient();
+        if (!$client) {
+            header('WWW-Authenticate: Basic realm="c0m-account-center"');
+            $this->jsonError(401, 'invalid_client', 'Client authentication failed.');
+            return;
+        }
+        $token = is_string($_POST['token'] ?? null) ? $_POST['token'] : '';
+        $hint = is_string($_POST['token_type_hint'] ?? null) ? $_POST['token_type_hint'] : '';
+        if ($token !== '') {
+            try {
+                if ($hint === 'refresh_token') {
+                    OAuthService::revokeRefreshFamily(Database::connection(), $token, (int)$client['id']);
+                } elseif ($hint === 'access_token') {
+                    OAuthService::revokeAccessToken(Database::connection(), $token, (int)$client['id']);
+                } elseif (!OAuthService::revokeRefreshFamily(Database::connection(), $token, (int)$client['id'])) {
+                    OAuthService::revokeAccessToken(Database::connection(), $token, (int)$client['id']);
+                }
+            } catch (Throwable $e) {
+                error_log('OAuth token revocation failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
+                $this->jsonError(500, 'server_error', 'Token revocation could not be completed.');
+                return;
+            }
+        }
+        // RFC 7009 requires a successful response for unknown/already-revoked tokens.
+        http_response_code(200);
+        echo '{}';
+    }
+
     public function userinfo(): void
     {
         $this->jsonHeaders();
