@@ -106,9 +106,9 @@ final class OAuthController
             }
 
             if (in_array('openid', $tokens['scopes'], true)) {
-                $tokens['id_token'] = $this->idToken($client, $tokens['user_id'], $tokens['scopes'], $tokens['nonce'] ?? null);
+                $tokens['id_token'] = $this->idToken($client, $tokens['user_id'], $tokens['scopes'], $tokens['nonce'] ?? null, (int)($tokens['auth_time'] ?? time()));
             }
-            unset($tokens['user_id'], $tokens['scopes'], $tokens['nonce'], $tokens['refresh_token_id'], $tokens['access_token_id'], $tokens['authorization_code_id']);
+            unset($tokens['user_id'], $tokens['scopes'], $tokens['nonce'], $tokens['auth_time'], $tokens['refresh_token_id'], $tokens['access_token_id'], $tokens['authorization_code_id']);
             echo json_encode($tokens, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
         } catch (Throwable $e) {
             error_log('OAuth token request failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
@@ -251,7 +251,8 @@ final class OAuthController
                 $pending['redirect_uri'],
                 $pending['scopes'],
                 $pending['code_challenge'],
-                $pending['nonce']
+                $pending['nonce'],
+                (int)($_SESSION['authenticated_at'] ?? time())
             );
             unset($_SESSION['oauth_pending']);
             $params = ['code' => $code, 'state' => $pending['state']];
@@ -345,7 +346,7 @@ final class OAuthController
         return $secret === '' ? $client : null;
     }
 
-    private function idToken(array $client, int $userId, array $scopes, ?string $nonce): string
+    private function idToken(array $client, int $userId, array $scopes, ?string $nonce, int $authTime): string
     {
         $pdo = Database::connection();
         $stmt = $pdo->prepare('SELECT email, display_name, email_verified_at, status FROM users WHERE id = :id LIMIT 1');
@@ -359,7 +360,7 @@ final class OAuthController
             'aud' => (string)$client['client_id'],
             'iat' => $now,
             'exp' => $now + 300,
-            'auth_time' => (int)($_SESSION['authenticated_at'] ?? $now),
+            'auth_time' => $authTime > 0 ? $authTime : $now,
         ];
         if ($nonce !== null && $nonce !== '') $claims['nonce'] = $nonce;
         if (in_array('profile', $scopes, true)) $claims['name'] = (string)($user['display_name'] ?? '');
