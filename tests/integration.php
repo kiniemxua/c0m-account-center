@@ -22,7 +22,7 @@ function assertIntegration(bool $condition, string $message): void
 
 $rejectWebhookTarget = static function (string $url): bool {
     try {
-        App\\Core\\SafeWebhookHttpClient::resolvePublicTarget($url);
+        App\Core\SafeWebhookHttpClient::resolvePublicTarget($url);
         return false;
     } catch (RuntimeException) {
         return true;
@@ -33,7 +33,7 @@ assertIntegration($rejectWebhookTarget('https://127.0.0.1/hook'), 'Webhook deliv
 assertIntegration($rejectWebhookTarget('https://10.0.0.8/hook'), 'Webhook delivery must reject private IPv4.');
 assertIntegration($rejectWebhookTarget('https://169.254.169.254/latest/meta-data/'), 'Webhook delivery must reject link-local metadata addresses.');
 assertIntegration($rejectWebhookTarget('https://[::1]/hook'), 'Webhook delivery must reject loopback IPv6.');
-$publicWebhookTarget = App\\Core\\SafeWebhookHttpClient::resolvePublicTarget('https://1.1.1.1/hook');
+$publicWebhookTarget = App\Core\SafeWebhookHttpClient::resolvePublicTarget('https://1.1.1.1/hook');
 assertIntegration($publicWebhookTarget['ip'] === '1.1.1.1', 'Webhook delivery may target a public HTTPS IPv4 endpoint.');
 
 $dsn = sprintf(
