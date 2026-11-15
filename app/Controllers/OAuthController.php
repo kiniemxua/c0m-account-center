@@ -83,6 +83,11 @@ final class OAuthController
             $this->jsonError(401, 'invalid_client', 'Client authentication failed.');
             return;
         }
+        if ($this->grantRateLimited($client)) {
+            header('Retry-After: 900');
+            $this->jsonError(429, 'slow_down', 'Too many invalid token grant attempts. Try again later.');
+            return;
+        }
 
         $grant = is_string($_POST['grant_type'] ?? null) ? $_POST['grant_type'] : '';
         try {
@@ -92,6 +97,7 @@ final class OAuthController
                 $verifier = is_string($_POST['code_verifier'] ?? null) ? $_POST['code_verifier'] : '';
                 $tokens = OAuthService::exchangeAuthorizationCode(Database::connection(), $client, $code, $redirect, $verifier);
                 if (!$tokens) {
+                    $this->recordGrantFailure($client);
                     $this->jsonError(400, 'invalid_grant', 'The authorization code is invalid, expired, used or does not match PKCE.');
                     return;
                 }
@@ -99,6 +105,7 @@ final class OAuthController
                 $refresh = is_string($_POST['refresh_token'] ?? null) ? $_POST['refresh_token'] : '';
                 $tokens = OAuthService::refreshAccessToken(Database::connection(), $client, $refresh);
                 if (!$tokens) {
+                    $this->recordGrantFailure($client);
                     $this->jsonError(400, 'invalid_grant', 'The refresh token is invalid, expired, revoked or already used.');
                     return;
                 }
@@ -400,6 +407,49 @@ final class OAuthController
             return null;
         }
         return $client;
+    }
+
+    /**
+     * Throttle authenticated clients that repeatedly submit invalid codes or
+     * refresh tokens. Successful grants do not consume this failure budget.
+     * The client and source-IP limits are independent and use REMOTE_ADDR only.
+     */
+    private function grantRateLimited(array $client): bool
+    {
+        $pdo = Database::connection();
+        $identifier = hash('sha256', 'oauth-grant:' . (string)$client['client_id']);
+        $byClient = $pdo->prepare(
+            "SELECT COUNT(*) FROM auth_attempts
+             WHERE action = 'oauth_grant_failure' AND identifier_hash = :identifier
+               AND created_at >= (UTC_TIMESTAMP() - INTERVAL 15 MINUTE)"
+        );
+        $byClient->execute(['identifier' => $identifier]);
+        if ((int)$byClient->fetchColumn() >= 10) return true;
+
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        if ($ip === false) return false;
+        $packedIp = inet_pton($ip);
+        $byIp = $pdo->prepare(
+            "SELECT COUNT(*) FROM auth_attempts
+             WHERE action = 'oauth_grant_failure' AND ip_address = :ip
+               AND created_at >= (UTC_TIMESTAMP() - INTERVAL 15 MINUTE)"
+        );
+        $byIp->bindValue(':ip', $packedIp, PDO::PARAM_LOB);
+        $byIp->execute();
+        return (int)$byIp->fetchColumn() >= 30;
+    }
+
+    private function recordGrantFailure(array $client): void
+    {
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        $packedIp = $ip !== false ? inet_pton($ip) : null;
+        $stmt = Database::connection()->prepare(
+            "INSERT INTO auth_attempts (action, ip_address, identifier_hash)
+             VALUES ('oauth_grant_failure', :ip, :identifier)"
+        );
+        $stmt->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $stmt->bindValue(':identifier', hash('sha256', 'oauth-grant:' . (string)$client['client_id']));
+        $stmt->execute();
     }
 
     private function clientAuthenticationRateLimited(string $clientId): bool
