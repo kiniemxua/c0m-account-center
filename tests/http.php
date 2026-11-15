@@ -25,6 +25,7 @@ $dbConfig = [
     'name' => getenv('DB_NAME') ?: 'c0m_test',
     'user' => getenv('DB_USER') ?: 'root',
     'password' => getenv('DB_PASSWORD') ?: '',
+    'app_key' => bin2hex(random_bytes(32)),
 ];
 if (!is_dir(BASE_PATH . '/config')) {
     throw new RuntimeException('Config directory is missing.');
