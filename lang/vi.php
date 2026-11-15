@@ -276,4 +276,6 @@ return [
 'Enable client' => 'Kích hoạt client',
 'No OAuth clients registered.' => 'Chưa có OAuth client nào được đăng ký.',
 'Redirect URIs' => 'Địa chỉ chuyển hướng',
+
+'Review active devices and recent sign-ins.' => 'Xem các thiết bị đang hoạt động và những lần đăng nhập gần đây.',
 ];
