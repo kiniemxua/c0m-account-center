@@ -75,13 +75,13 @@ final class SubscriptionPlanController
                 }
 
                 $activeSubscriptions = $pdo->prepare(
-                    "SELECT id FROM subscriptions
+                    "SELECT id, status FROM subscriptions
                      WHERE plan_id = :plan AND status IN ('active', 'trialing', 'past_due')
                      ORDER BY id FOR UPDATE"
                 );
                 $activeSubscriptions->execute(['plan' => $form['id']]);
-                $subscriptionIds = array_map('intval', $activeSubscriptions->fetchAll(PDO::FETCH_COLUMN));
-                if ($form['status'] === 'archived' && $subscriptionIds !== []) {
+                $subscriptionRows = $activeSubscriptions->fetchAll(PDO::FETCH_ASSOC);
+                if ($form['status'] === 'archived' && $subscriptionRows !== []) {
                     throw new \DomainException('plan_in_use');
                 }
 
@@ -99,8 +99,10 @@ final class SubscriptionPlanController
 
                 // Feature/quota edits must take effect for current members in
                 // the same transaction as the plan update.
-                foreach ($subscriptionIds as $subscriptionId) {
-                    EntitlementService::synchronize($pdo, $subscriptionId);
+                foreach ($subscriptionRows as $subscriptionRow) {
+                    if (in_array($subscriptionRow['status'], ['active', 'trialing'], true)) {
+                        EntitlementService::synchronize($pdo, (int)$subscriptionRow['id']);
+                    }
                 }
             }
 
