@@ -15,6 +15,12 @@ use App\Controllers\AccountController;
 use App\Controllers\LanguageController;
 
 $router = new Router();
+$router->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
+$router->get('/oauth/jwks', [OAuthController::class, 'jwks']);
+$router->get('/oauth/authorize', [OAuthController::class, 'authorize']);
+$router->post('/oauth/authorize', [OAuthController::class, 'authorize']);
+$router->post('/oauth/token', [OAuthController::class, 'token']);
+$router->get('/oauth/userinfo', [OAuthController::class, 'userinfo']);
 $router->post('/language', [LanguageController::class, 'switch']);
 $router->get('/', [HomeController::class, 'index']);
 $router->get('/login', [AuthController::class, 'showLogin']);
