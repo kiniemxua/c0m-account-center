@@ -60,7 +60,7 @@ Super Admins can provision, rotate and disable OAuth clients in the browser at `
 - `/login-history`
 - `/admin/users`, `/admin/settings`, `/admin/audit`
 - `/admin/applications`, `/admin/applications/save`
-- `/admin/groups`
+- `/admin/groups`, `/admin/plans`, `/admin/plans/save`
 - `/language`
 
 Browser mutations require session-bound CSRF tokens. The API bearer-token endpoints do not use browser cookies as identity.
@@ -94,7 +94,7 @@ Errors use stable machine-readable codes (`invalid_token`, `insufficient_scope`)
 
 ## Integration principles
 
-- Account Center is the source of truth for identity, groups, roles, permissions and future entitlements.
+- Account Center is the source of truth for identity, groups, roles, permissions and subscription entitlements.
 - An API key identifies an application only; it must never identify a member.
 - Keep user identity distinct from application identity.
 - Validate token issuer, audience, signature, expiry, nonce and state at the connected application.
