@@ -6,3 +6,6 @@
 .DS_Store
 /config/payments.php
 /storage/oauth-signing-private.pem
+
+/storage/oauth-signing-previous/
+/storage/oauth-signing-rotation.lock
