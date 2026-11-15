@@ -26,7 +26,7 @@ final class OAuthController
                 http_response_code(429);
                 header('Retry-After: 900');
                 header('Cache-Control: no-store');
-                echo \\App\\Core\\t('Too many authorization requests. Please try again later.');
+                echo \App\\Core\\t('Too many authorization requests. Please try again later.');
                 return;
             }
             $this->recordAuthorizationAttempt($requestedClientId);
