@@ -697,6 +697,64 @@ try {
     ]));
     httpCheck($unknownRevoke['status'] === 200, 'RFC 7009 revocation must return success for unknown tokens.');
 
+    // Verify confidential-client secret disclosure, one-time rotation and lifecycle controls.
+    $pdo->prepare('DELETE FROM oauth_clients WHERE application_id = :application_id')
+        ->execute(['application_id' => $registryAppId]);
+    $oauthAdminPage = $request('GET', '/admin/oauth-clients', '', $authCookie);
+    $oauthAdminCsrf = '';
+    if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $oauthAdminPage['body'], $match)) {
+        $oauthAdminCsrf = $match[1];
+    }
+    $confidentialCreate = $request('POST', '/admin/oauth-clients/create', http_build_query([
+        '_csrf' => $oauthAdminCsrf,
+        'application_id' => (string)$registryAppId,
+        'client_type' => 'confidential',
+        'redirect_uris' => $oauthRedirect,
+        'scopes' => ['openid', 'email'],
+    ]), $authCookie);
+    httpCheck($confidentialCreate['status'] === 303, 'A Super Admin must create a confidential OAuth client.');
+    $confidentialRowStmt = $pdo->prepare('SELECT id, client_id, client_secret_hash FROM oauth_clients WHERE application_id = :application_id');
+    $confidentialRowStmt->execute(['application_id' => $registryAppId]);
+    $confidentialRow = $confidentialRowStmt->fetch();
+    $initialSecretHash = (string)$confidentialRow['client_secret_hash'];
+    $secretFlash = $request('GET', '/admin/oauth-clients', '', $authCookie);
+    $initialSecret = '';
+    if (preg_match('/<label>Client secret<\\/label>\\s*<div class="code-value">([a-f0-9]{96})<\\/div>/', $secretFlash['body'], $match)) {
+        $initialSecret = $match[1];
+    }
+    httpCheck($initialSecret !== '' && hash('sha256', $initialSecret) === $initialSecretHash, 'A confidential client secret must be shown once and stored only as a hash.');
+    $rotateSecret = $request('POST', '/admin/oauth-clients/rotate', http_build_query([
+        '_csrf' => $oauthAdminCsrf,
+        'client_record_id' => (string)$confidentialRow['id'],
+    ]), $authCookie);
+    httpCheck($rotateSecret['status'] === 303, 'A Super Admin must be able to rotate a confidential client secret.');
+    $confidentialRowStmt->execute(['application_id' => $registryAppId]);
+    $rotatedClientRow = $confidentialRowStmt->fetch();
+    $rotatedSecretFlash = $request('GET', '/admin/oauth-clients', '', $authCookie);
+    $rotatedSecret = '';
+    if (preg_match('/<label>Client secret<\\/label>\\s*<div class="code-value">([a-f0-9]{96})<\\/div>/', $rotatedSecretFlash['body'], $match)) {
+        $rotatedSecret = $match[1];
+    }
+    httpCheck($rotatedSecret !== '' && $rotatedSecret !== $initialSecret
+        && hash('sha256', $rotatedSecret) === $rotatedClientRow['client_secret_hash'],
+        'Secret rotation must replace the hash and disclose the new secret only once.');
+    $afterSecretFlash = $request('GET', '/admin/oauth-clients', '', $authCookie);
+    httpCheck(!str_contains($afterSecretFlash['body'], $rotatedSecret), 'A client secret must not be shown again after its one-time flash.');
+    $disableOauthClient = $request('POST', '/admin/oauth-clients/status', http_build_query([
+        '_csrf' => $oauthAdminCsrf,
+        'client_record_id' => (string)$confidentialRow['id'],
+        'status' => 'disabled',
+    ]), $authCookie);
+    httpCheck($disableOauthClient['status'] === 303, 'A Super Admin must be able to disable an OAuth client.');
+    $confidentialRowStmt->execute(['application_id' => $registryAppId]);
+    httpCheck($confidentialRowStmt->fetch()['status'] === 'disabled', 'Disabling an OAuth client must persist its inactive state.');
+    $enableOauthClient = $request('POST', '/admin/oauth-clients/status', http_build_query([
+        '_csrf' => $oauthAdminCsrf,
+        'client_record_id' => (string)$confidentialRow['id'],
+        'status' => 'active',
+    ]), $authCookie);
+    httpCheck($enableOauthClient['status'] === 303, 'A Super Admin must be able to re-enable an OAuth client.');
+
     $memberDashboard = $request('GET', '/dashboard', '', $authCookie);
     httpCheck($memberDashboard['status'] === 200 && str_contains($memberDashboard['body'], $registryName) && str_contains($memberDashboard['body'], 'https://registry.example.test/app'), 'Active member applications must appear as safe links on the dashboard.');
     $invalidRegistryUrl = $request('POST', '/admin/applications/save', http_build_query([
