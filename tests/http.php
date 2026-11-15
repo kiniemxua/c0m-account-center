@@ -588,7 +588,9 @@ try {
         'code_challenge_method' => 'S256',
     ], '', '&', PHP_QUERY_RFC3986);
     $authorizePage = $request('GET', '/oauth/authorize?' . $authorizeQuery, '', $authCookie);
-    httpCheck($authorizePage['status'] === 200 && str_contains($authorizePage['body'], 'Authorize application'), 'A signed-in member must see an OAuth consent screen.');
+    httpCheck($authorizePage['status'] === 200
+        && (str_contains($authorizePage['body'], 'Authorize application') || str_contains($authorizePage['body'], 'Cấp quyền cho ứng dụng')),
+        'A signed-in member must see an OAuth consent screen (status ' . $authorizePage['status'] . ').');
     $oauthCsrf = '';
     if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $authorizePage['body'], $match)) {
         $oauthCsrf = $match[1];
