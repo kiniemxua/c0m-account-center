@@ -555,19 +555,29 @@ try {
     httpCheck($registryRow && $registryRow['name'] === $registryName && $registryRow['status'] === 'active' && $registryRow['access_level'] === 'members' && (int)$registryRow['featured'] === 1, 'Application creation must persist the submitted registry fields.');
     $registryAppId = (int)$registryRow['id'];
 
-    // Exercise the full OAuth 2.0 Authorization Code + PKCE and OIDC flow.
-    $oauthClientId = bin2hex(random_bytes(32));
+    // Create the OAuth client through the Super Admin interface, then
+    // exercise the complete Authorization Code + PKCE and OIDC flow.
+    $oauthAdminPage = $request('GET', '/admin/oauth-clients', '', $authCookie);
+    httpCheck($oauthAdminPage['status'] === 200 && str_contains($oauthAdminPage['body'], 'OAuth client'), 'A Super Admin must access OAuth client management.');
+    $oauthAdminCsrf = '';
+    if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $oauthAdminPage['body'], $match)) {
+        $oauthAdminCsrf = $match[1];
+    }
+    httpCheck($oauthAdminCsrf !== '', 'OAuth client management must expose CSRF protection.');
     $oauthRedirect = 'https://oauth.example.test/callback';
     $oauthScopes = ['openid', 'profile', 'email', 'groups', 'permissions'];
-    $pdo->prepare(
-        'INSERT INTO oauth_clients (application_id, client_id, client_secret_hash, client_type, redirect_uris, allowed_scopes, status)
-         VALUES (:app, :client, NULL, \'public\', :redirects, :scopes, \'active\')'
-    )->execute([
-        'app' => $registryAppId,
-        'client' => $oauthClientId,
-        'redirects' => json_encode([$oauthRedirect], JSON_THROW_ON_ERROR),
-        'scopes' => json_encode($oauthScopes, JSON_THROW_ON_ERROR),
-    ]);
+    $oauthClientCreate = $request('POST', '/admin/oauth-clients/create', http_build_query([
+        '_csrf' => $oauthAdminCsrf,
+        'application_id' => (string)$registryAppId,
+        'client_type' => 'public',
+        'redirect_uris' => $oauthRedirect,
+        'scopes' => $oauthScopes,
+    ]), $authCookie);
+    httpCheck($oauthClientCreate['status'] === 303, 'A Super Admin must provision an OAuth client through HTTP.');
+    $oauthClientLookup = $pdo->prepare('SELECT client_id FROM oauth_clients WHERE application_id = :application_id');
+    $oauthClientLookup->execute(['application_id' => $registryAppId]);
+    $oauthClientId = (string)$oauthClientLookup->fetchColumn();
+    httpCheck(preg_match('/\\A[a-f0-9]{64}\\z/D', $oauthClientId) === 1, 'The OAuth client ID must be generated and stored.');
     $discovery = $request('GET', '/.well-known/openid-configuration');
     httpCheck($discovery['status'] === 200 && str_contains($discovery['body'], '/oauth/token') && str_contains($discovery['body'], 'RS256'), 'OpenID discovery must publish the issuer and supported endpoints.');
     $jwksResponse = $request('GET', '/oauth/jwks');
