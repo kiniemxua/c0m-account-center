@@ -37,7 +37,7 @@ The product intentionally keeps the authoritative state inside Account Center ra
 - app/Controllers/LanguageController.php persists the selected locale for guest or authenticated users.
 - app/Controllers/OAuthController.php implements OAuth2/OIDC, token lifecycle, discovery, JWKS and scoped UserInfo.
 - app/Controllers/AccountApiController.php and EntitlementController.php expose versioned, bearer-authenticated member profile, group, membership, permission and entitlement APIs.
-- app/Controllers/PaymentWebhookController.php verifies provider signatures and applies subscription/payment events transactionally.
+- app/Controllers/PaymentWebhookController.php verifies provider signatures and applies subscription/payment events transactionally.\n- app/Controllers/SubscriptionPlanController.php provides permission-gated plan management and synchronizes changed entitlements atomically.
 
 ### Views and UI
 
