@@ -10,7 +10,7 @@
 <main class="shell">
 <nav class="nav">
 <a class="brand" href="/dashboard">c0m.me</a>
-<div><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a> · <a class="nav-link" href="/admin/groups"><?= \App\Core\t('Member groups') ?></a> · <a class="nav-link" href="/admin/oauth-clients"><?= \App\Core\t('OAuth clients') ?></a> · <a class="nav-link" href="/admin/settings"><?= \App\Core\t('Settings') ?></a></div>
+<div class="admin-nav"><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a><a class="nav-link" href="/admin/groups"><?= \App\Core\t('Member groups') ?></a><a class="nav-link" href="/admin/oauth-clients"><?= \App\Core\t('OAuth clients') ?></a><a class="nav-link" href="/admin/settings"><?= \App\Core\t('Settings') ?></a></div>
 </nav>
 <section class="hero compact">
 <span class="eyebrow"><?= \App\Core\t('ADMINISTRATION') ?></span>
@@ -18,7 +18,7 @@
 <p><?= \App\Core\t('Register and manage applications available in the c0m.me ecosystem.') ?></p>
 </section>
 <?php if ($error !== null): ?><div class="alert" role="alert"><?= htmlspecialchars($error, ENT_QUOTES, 'UTF-8') ?></div><?php endif; ?>
-<section class="auth-card">
+<section class="admin-panel">
 <h2><?= $form['id'] > 0 ? \App\Core\t('Edit application') : \App\Core\t('New application') ?></h2>
 <form method="post" action="/admin/applications/save">
 <input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>">
@@ -63,7 +63,7 @@
 </section>
 <section>
 <h2><?= \App\Core\t('Registered applications') ?></h2>
-<div class="feature-grid">
+<div class="admin-list">
 <?php foreach ($apps as $app): ?>
 <article>
 <b><?= htmlspecialchars((string)$app['app_key'], ENT_QUOTES, 'UTF-8') ?></b>
