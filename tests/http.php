@@ -573,6 +573,21 @@ try {
     $jwksResponse = $request('GET', '/oauth/jwks');
     httpCheck($jwksResponse['status'] === 200 && str_contains($jwksResponse['body'], '"kty":"RSA"'), 'The JWKS endpoint must publish an RSA public key.');
 
+    $oauthPreflight = $request('OPTIONS', '/oauth/token', '', '', true, [
+        'Origin: https://oauth.example.test',
+        'Access-Control-Request-Method: POST',
+        'Access-Control-Request-Headers: authorization,content-type',
+    ]);
+    httpCheck($oauthPreflight['status'] === 204
+        && in_array('Access-Control-Allow-Origin: https://oauth.example.test', $oauthPreflight['headers'], true),
+        'OAuth CORS preflight must allow only the registered application origin.');
+    $untrustedPreflight = $request('OPTIONS', '/oauth/token', '', '', true, [
+        'Origin: https://attacker.example.test',
+        'Access-Control-Request-Method: POST',
+        'Access-Control-Request-Headers: authorization,content-type',
+    ]);
+    httpCheck($untrustedPreflight['status'] === 403, 'OAuth CORS preflight must reject unregistered origins.');
+
     $oauthVerifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=') . 'A';
     $oauthChallenge = rtrim(strtr(base64_encode(hash('sha256', $oauthVerifier, true)), '+/', '-_'), '=');
     $oauthState = bin2hex(random_bytes(16));
