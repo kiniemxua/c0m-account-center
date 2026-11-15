@@ -4,13 +4,13 @@ declare(strict_types=1);
 define('BASE_PATH', dirname(__DIR__));
 
 spl_autoload_register(static function (string $class): void {
-    $prefix = 'App\\\\';
+    $prefix = 'App\\';
     if (!str_starts_with($class, $prefix)) return;
-    $file = BASE_PATH . '/app/' . str_replace('\\\\', '/', substr($class, strlen($prefix))) . '.php';
+    $file = BASE_PATH . '/app/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
     if (is_file($file)) require $file;
 });
 
-use App\\Core\\OidcSigner;
+use App\Core\OidcSigner;
 
 $storage = BASE_PATH . '/storage';
 if (!is_dir($storage) && !mkdir($storage, 0750, true) && !is_dir($storage)) {
@@ -81,10 +81,10 @@ try {
             throw new RuntimeException('A different public key already exists for the current key ID.');
         }
     } else {
-        self::atomicWrite($previousPath, $oldDetails['key'], 0640);
+        atomicWrite($previousPath, $oldDetails['key'], 0640);
     }
 
-    self::atomicWrite($activePath, $newPem, 0600);
+    atomicWrite($activePath, $newPem, 0600);
     fwrite(STDOUT, "OIDC signing key rotated successfully.\n");
     fwrite(STDOUT, "Previous key ID: {$oldKid}\n");
     fwrite(STDOUT, "Active key ID:   {$newKid}\n");
