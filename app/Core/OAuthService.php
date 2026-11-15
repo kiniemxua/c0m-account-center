@@ -221,15 +221,19 @@ final class OAuthService
 
     public static function revokeRefreshFamily(PDO $pdo, string $refreshToken, int $clientId): bool
     {
-        $stmt = $pdo->prepare(
-            'SELECT id, family_id FROM oauth_refresh_tokens
-             WHERE token_hash = :hash AND client_id = :client LIMIT 1'
-        );
-        $stmt->execute(['hash' => hash('sha256', $refreshToken), 'client' => $clientId]);
-        $row = $stmt->fetch();
-        if (!$row) return false;
+        if ($refreshToken === '' || strlen($refreshToken) > 128) return false;
         $pdo->beginTransaction();
         try {
+            $stmt = $pdo->prepare(
+                'SELECT id, family_id FROM oauth_refresh_tokens
+                 WHERE token_hash = :hash AND client_id = :client LIMIT 1 FOR UPDATE'
+            );
+            $stmt->execute(['hash' => hash('sha256', $refreshToken), 'client' => $clientId]);
+            $row = $stmt->fetch();
+            if (!$row) {
+                $pdo->rollBack();
+                return false;
+            }
             $pdo->prepare('UPDATE oauth_refresh_tokens SET revoked_at = UTC_TIMESTAMP() WHERE family_id = :family AND revoked_at IS NULL')
                 ->execute(['family' => $row['family_id']]);
             $pdo->commit();
@@ -238,6 +242,17 @@ final class OAuthService
             if ($pdo->inTransaction()) $pdo->rollBack();
             throw $e;
         }
+    }
+
+    public static function revokeAccessToken(PDO $pdo, string $accessToken, int $clientId): bool
+    {
+        if ($accessToken === '' || strlen($accessToken) > 128) return false;
+        $stmt = $pdo->prepare(
+            'UPDATE oauth_access_tokens SET revoked_at = UTC_TIMESTAMP()
+             WHERE token_hash = :hash AND client_id = :client AND revoked_at IS NULL'
+        );
+        $stmt->execute(['hash' => hash('sha256', $accessToken), 'client' => $clientId]);
+        return $stmt->rowCount() === 1;
     }
 
     private static function issueTokenPair(PDO $pdo, int $clientId, int $userId, array $scopes, ?string $familyId = null, ?int $authTime = null): array
