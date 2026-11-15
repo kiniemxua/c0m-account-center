@@ -133,7 +133,7 @@ try {
                 $processed++;
             }
 
-            $pending = $pdo->prepare("SELECT COUNT(*) FROM webhook_deliveries WHERE outbox_id = :id AND status = 'pending'");
+            $pending = $pdo->prepare("SELECT COUNT(*) FROM webhook_deliveries WHERE outbox_id = :id AND status <> 'delivered'");
             $pending->execute(['id' => (int)$event['id']]);
             if ((int)$pending->fetchColumn() === 0) {
                 $pdo->prepare('UPDATE event_outbox SET delivered_at = UTC_TIMESTAMP(), attempts = attempts + 1 WHERE id = :id AND delivered_at IS NULL')
