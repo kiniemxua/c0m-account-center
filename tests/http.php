@@ -830,7 +830,7 @@ try {
         'status' => 'active',
         'sort_order' => '10',
     ]), $authCookie);
-    httpCheck($planUpdate['status'] === 303, 'A Super Admin must update a subscription plan.');
+    httpCheck($planUpdate['status'] === 303, 'A Super Admin must update a subscription plan (HTTP ' . $planUpdate['status'] . '; ' . substr($planUpdate['body'], 0, 500) . ').');
     $entitlementRows->execute(['user' => $testUserId]);
     $updatedEntitlementMap = [];
     foreach ($entitlementRows->fetchAll() as $entitlementRow) {
