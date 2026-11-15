@@ -100,10 +100,15 @@ try {
     }
 
     $base = 'http://127.0.0.1:' . $port;
-    $request = static function (string $method, string $path, string $body = '', string $cookie = '', bool $trustedHttps = true) use ($base): array {
+    $request = static function (string $method, string $path, string $body = '', string $cookie = '', bool $trustedHttps = true, array $extraHeaders = []) use ($base): array {
         $headers = ["Connection: close"];
         if ($trustedHttps) {
             $headers[] = "X-Forwarded-Proto: https";
+        }
+        foreach ($extraHeaders as $extraHeader) {
+            if (is_string($extraHeader) && !preg_match('/[\\r\\n]/', $extraHeader)) {
+                $headers[] = $extraHeader;
+            }
         }
         if ($cookie !== '') {
             $headers[] = 'Cookie: ' . $cookie;
