@@ -4,9 +4,10 @@ namespace App\Core;
 
 final class Router
 {
-    private array $routes = ['GET' => [], 'POST' => []];
+    private array $routes = ['GET' => [], 'POST' => [], 'OPTIONS' => []];
     public function get(string $path, callable|array $handler): void { $this->routes['GET'][$path] = $handler; }
     public function post(string $path, callable|array $handler): void { $this->routes['POST'][$path] = $handler; }
+    public function options(string $path, callable|array $handler): void { $this->routes['OPTIONS'][$path] = $handler; }
     public function dispatch(string $method, string $path): void
     {
         $handler = $this->routes[$method][$path] ?? null;
