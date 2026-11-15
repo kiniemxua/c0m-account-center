@@ -605,7 +605,12 @@ try {
     $oauthClientId = (string)$oauthClientLookup->fetchColumn();
     httpCheck(preg_match('/\\A[a-f0-9]{64}\\z/D', $oauthClientId) === 1, 'The OAuth client ID must be generated and stored.');
     $discovery = $request('GET', '/.well-known/openid-configuration');
-    httpCheck($discovery['status'] === 200 && str_contains($discovery['body'], '/oauth/token') && str_contains($discovery['body'], 'RS256'), 'OpenID discovery must publish the issuer and supported endpoints.');
+    $discoveryData = json_decode($discovery['body'], true);
+    httpCheck($discovery['status'] === 200 && str_contains($discovery['body'], '/oauth/token') && str_contains($discovery['body'], 'RS256')
+        && is_array($discoveryData) && in_array('groups', $discoveryData['claims_supported'] ?? [], true)
+        && in_array('permissions', $discoveryData['claims_supported'] ?? [], true)
+        && in_array('authorization_revision', $discoveryData['claims_supported'] ?? [], true),
+        'OpenID discovery must publish supported endpoints and every available member claim.');
     $jwksResponse = $request('GET', '/oauth/jwks');
     httpCheck($jwksResponse['status'] === 200 && str_contains($jwksResponse['body'], '"kty":"RSA"'), 'The JWKS endpoint must publish an RSA public key.');
 
