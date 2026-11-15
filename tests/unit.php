@@ -140,13 +140,13 @@ try {
     check(file_put_contents($previousFixturePath, $previousFixtureDetails['key'], LOCK_EX) !== false,
         'The previous public-key fixture must be persisted.');
     touch($previousFixturePath, time());
-    $jwksWithPrevious = App\\Core\\OidcSigner::jwks();
+    $jwksWithPrevious = App\Core\OidcSigner::jwks();
     $previousKeyIds = array_column($jwksWithPrevious['keys'], 'kid');
     check(in_array($previousFixtureKid, $previousKeyIds, true),
         'JWKS must publish a valid previous public key during the overlap window.');
 
     touch($previousFixturePath, time() - 86401);
-    $jwksAfterOverlap = App\\Core\\OidcSigner::jwks();
+    $jwksAfterOverlap = App\Core\OidcSigner::jwks();
     $expiredKeyIds = array_column($jwksAfterOverlap['keys'], 'kid');
     check(!in_array($previousFixtureKid, $expiredKeyIds, true),
         'JWKS must stop publishing previous public keys after the 24-hour overlap window.');
