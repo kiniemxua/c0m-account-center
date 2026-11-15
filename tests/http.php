@@ -574,7 +574,7 @@ try {
     }
     httpCheck($oauthAdminCsrf !== '', 'OAuth client management must expose CSRF protection.');
     $oauthRedirect = 'https://oauth.example.test/callback';
-    $oauthScopes = ['openid', 'profile', 'email', 'groups', 'permissions'];
+    $oauthScopes = ['openid', 'profile', 'email', 'groups', 'permissions', 'entitlements'];
     $oauthClientCreate = $request('POST', '/admin/oauth-clients/create', http_build_query([
         '_csrf' => $oauthAdminCsrf,
         'application_id' => (string)$registryAppId,
