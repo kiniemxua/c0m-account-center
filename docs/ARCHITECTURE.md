@@ -22,7 +22,10 @@ The product intentionally keeps the authoritative state inside Account Center ra
 - app/Core/SuperAdminGuard.php protects the final active super administrator from being disabled or demoted in concurrent operations.
 - app/Core/UserRoleManager.php manages role replacement and role assignment semantics.
 - app/Core/AppConfig.php resolves the application base URL from config/app.php.
-- app/Core/EmailTemplates.php centralizes localized system email content.\n- app/Core/OAuthService.php manages authorization codes, access/refresh tokens and replay detection.\n- app/Core/SubscriptionService.php and EntitlementService.php synchronize subscription lifecycle and member features/quotas.\n- app/Core/SafeWebhookHttpClient.php validates and DNS-pins outbound webhook destinations before HTTPS delivery.
+- app/Core/EmailTemplates.php centralizes localized system email content.
+- app/Core/OAuthService.php manages authorization codes, access/refresh tokens and replay detection.
+- app/Core/SubscriptionService.php and EntitlementService.php synchronize subscription lifecycle and member features/quotas.
+- app/Core/SafeWebhookHttpClient.php validates and DNS-pins outbound webhook destinations before HTTPS delivery.
 - app/Core/MailService.php and mail provider implementations provide SMTP/logging abstraction.
 
 ### Controllers and routing
@@ -31,7 +34,11 @@ The product intentionally keeps the authoritative state inside Account Center ra
 - app/Controllers/AuthController.php handles registration, verification, password reset, login/logout and profile flows.
 - app/Controllers/AdminController.php handles user management, settings and audit log review.
 - app/Controllers/ApplicationRegistryController.php manages registered ecosystem applications under the `apps.manage` permission.
-- app/Controllers/LanguageController.php persists the selected locale for guest or authenticated users.\n- app/Controllers/OAuthController.php implements OAuth2/OIDC, token lifecycle, discovery, JWKS and scoped UserInfo.\n- app/Controllers/AccountApiController.php and EntitlementController.php expose versioned, bearer-authenticated member profile, group, membership, permission and entitlement APIs.\n- app/Controllers/PaymentWebhookController.php verifies provider signatures and applies subscription/payment events transactionally.
+- app/Controllers/LanguageController.php persists the selected locale for guest or authenticated users.
+- app/Controllers/OAuthController.php implements OAuth2/OIDC, token lifecycle, discovery, JWKS and scoped UserInfo.
+- app/Controllers/AccountApiController.php and EntitlementController.php expose versioned, bearer-authenticated member profile, group, membership, permission and entitlement APIs.
+- app/Controllers/PaymentWebhookController.php verifies provider signatures and applies subscription/payment events transactionally.
+- app/Controllers/SubscriptionPlanController.php provides permission-gated plan management and synchronizes changed entitlements atomically.
 
 ### Views and UI
 
@@ -54,7 +61,11 @@ The following patterns are central to the product:
 - sessions: server-side authenticated session records
 - audit_logs: security and admin actions
 - applications: ecosystem application catalog and launch metadata
-- app_settings: mutable configuration such as registration enablement\n- oauth_clients, oauth_authorization_codes, oauth_access_tokens and oauth_refresh_tokens: application credentials and OAuth lifecycle\n- subscription_plans, subscriptions and user_entitlements: plans, current member subscriptions and derived access features/quotas\n- payment_webhook_events and payment_transactions: verified, idempotently processed provider events and financial records\n- event_outbox, app_webhook_endpoints and webhook_deliveries: transactional event publication and retryable outbound delivery
+- app_settings: mutable configuration such as registration enablement
+- oauth_clients, oauth_authorization_codes, oauth_access_tokens and oauth_refresh_tokens: application credentials and OAuth lifecycle
+- subscription_plans, subscriptions and user_entitlements: plans, current member subscriptions and derived access features/quotas
+- payment_webhook_events and payment_transactions: verified, idempotently processed provider events and financial records
+- event_outbox, app_webhook_endpoints and webhook_deliveries: transactional event publication and retryable outbound delivery
 
 ## 3. Security model
 
@@ -67,7 +78,10 @@ The following patterns are central to the product:
 - Super administrator protections are enforced at the database transaction layer.
 - Registry writes require CSRF and `apps.manage`, validate HTTPS launch URLs and audit in the same DB transaction. A `restricted` catalog flag is not an authorization grant.
 - Role replacement, account-status changes and email activation increment `user_authorization_revisions` in the same transaction as the mutation. New users resolve to revision 1 until their first authorization change.
-- Group membership changes, application-group grant changes and entitlement synchronization increment the affected users' authorization revisions in the same transaction. The dashboard enforces directory visibility; downstream apps must use scoped bearer APIs and still enforce their own server-side checks.\n- OAuth tokens are opaque, stored as hashes and checked for expiry, revocation, active user and active client on every API request.\n- Payment webhook signatures and provider event IDs are verified before processing; payment state and outbox records are written in the same transaction.\n- Outbound webhooks reject private/reserved DNS destinations, pin validated public IPs, verify TLS, disable redirects/proxies and cap response bodies.
+- Group membership changes, application-group grant changes and entitlement synchronization increment the affected users' authorization revisions in the same transaction. The dashboard enforces directory visibility; downstream apps must use scoped bearer APIs and still enforce their own server-side checks.
+- OAuth tokens are opaque, stored as hashes and checked for expiry, revocation, active user and active client on every API request.
+- Payment webhook signatures and provider event IDs are verified before processing; payment state and outbox records are written in the same transaction.
+- Outbound webhooks reject private/reserved DNS destinations, pin validated public IPs, verify TLS, disable redirects/proxies and cap response bodies.
 
 ## 4. Localization model
 
