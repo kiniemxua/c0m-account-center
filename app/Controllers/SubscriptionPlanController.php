@@ -93,7 +93,9 @@ final class SubscriptionPlanController
                          sort_order = :sort_order, updated_at = UTC_TIMESTAMP()
                      WHERE id = :id'
                 );
-                $update->execute($this->databaseValues($form, $decoded) + ['id' => $form['id']]);
+                $updateValues = $this->databaseValues($form, $decoded);
+                unset($updateValues['plan_key']);
+                $update->execute($updateValues + ['id' => $form['id']]);
                 $planId = $form['id'];
                 $action = 'subscription_plan.updated';
 
