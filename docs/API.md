@@ -112,3 +112,10 @@ Errors use stable machine-readable codes (`invalid_token`, `insufficient_scope`)
 - [INSTALLATION.md](INSTALLATION.md)
 - [SECURITY.md](SECURITY.md)
 - [LOCALIZATION.md](LOCALIZATION.md)
+
+
+## PHP SDK for connected products
+
+A lightweight PHP 8.2+ client is available under `sdk/php`. It calls the scoped member endpoints using a server-side OAuth access token and provides `authorizationSnapshot()`, `hasPermission()`, `hasGroup()`, `hasFeature()` and `quota()`.
+
+The snapshot helper compares the authorization revision from all five API reads and retries when authorization changes during the fetch. Products should cache snapshots only with their revision, refresh when `GET /api/v1/me` reports a newer revision, and fail closed if Account Center cannot be reached. See [the PHP SDK guide](../sdk/php/README.md).

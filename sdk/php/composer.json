@@ -1,0 +1,16 @@
+{
+  "name": "c0m/account-center-php",
+  "description": "Small PHP client for the c0m Account Center scoped member API.",
+  "type": "library",
+  "license": "proprietary",
+  "require": {
+    "php": "^8.2",
+    "ext-curl": "*",
+    "ext-json": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "C0m\\AccountCenter\\": "src/"
+    }
+  }
+}

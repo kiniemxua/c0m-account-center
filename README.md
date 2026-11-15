@@ -30,6 +30,7 @@ The repository contains an account/authentication foundation:
 - Super Admin subscription-plan management with validated feature/quota JSON, immutable plan keys, archive safeguards and transactional entitlement synchronization.
 - Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
 - Versioned member APIs for profile, active groups, group memberships, effective roles/permissions and subscription entitlements, all protected by scoped OAuth bearer tokens and authorization revisions.
+- Lightweight PHP SDK for connected products, including consistent authorization snapshots, revision-aware cache refresh and fail-closed permission/feature/quota checks.
 - OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
 - OpenID Connect discovery, RS256 ID tokens, JWKS, scoped UserInfo, nonce/state validation and authorization revision output.
 - Opaque access/refresh tokens, refresh-token rotation and replay detection, token-family revocation and RFC 7009 revocation endpoint.
