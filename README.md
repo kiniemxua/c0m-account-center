@@ -44,7 +44,7 @@ The repository contains an account/authentication foundation:
 
 1. Upload the repository so app/, config/, database/, storage/ and public/ are siblings.
 2. Point the domain document root to public/; do not expose the repository root.
-3. Enable PHP 8.2+ with pdo_mysql, mbstring, openssl and fileinfo.
+3. Enable PHP 8.2+ with pdo_mysql, mbstring, openssl, fileinfo and curl.
 4. Create a MariaDB/MySQL database and user in cPanel.
 5. Visit /installer/ over HTTPS and create the first administrator.
 6. Keep storage/install.lock, deny public access to /installer/ after setup and make config files read-only.
