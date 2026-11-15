@@ -55,3 +55,8 @@
 - Authorization revisions increment for role, group membership/grant, status and email-activation changes, but no external API/token currently exposes them to clients.
 
 Do not treat this development build as production-ready. Enforce HTTPS, keep config and storage outside the public document root, restrict permissions, configure backups and complete the remaining tests before accepting real member accounts.
+
+
+## Outbound webhook destination controls
+
+Outbound application webhooks require HTTPS on port 443. Before registration and again before every delivery, Account Center resolves all A/AAAA records and rejects loopback, private, link-local and reserved IP ranges. The dispatcher pins the selected public address for the TLS connection, verifies the certificate and hostname, disables environment proxies and never follows redirects. The cURL extension is required; if unavailable, delivery fails closed rather than falling back to an unpinned stream request. DNS is revalidated for every attempt to reduce rebinding risk.
