@@ -15,7 +15,12 @@ if (!is_dir($storage) && !mkdir($storage, 0750, true) && !is_dir($storage)) {
     fwrite(STDERR, "OIDC signing storage is unavailable.\n");
     exit(1);
 }
-$lock = @fopen($storage . '/oauth-signing-rotation.lock', 'c');
+$lockPath = $storage . '/oauth-signing-rotation.lock';
+if (is_link($lockPath)) {
+    fwrite(STDERR, "The OIDC rotation lock path must not be a symbolic link.\\n");
+    exit(1);
+}
+$lock = @fopen($lockPath, 'c');
 if (!is_resource($lock) || !flock($lock, LOCK_EX | LOCK_NB)) {
     fwrite(STDERR, "Another OIDC signing-key rotation is already running.\n");
     exit(1);
@@ -77,6 +82,9 @@ try {
             : '';
         if (!hash_equals($oldKid, $existingKid)) {
             throw new RuntimeException('A different public key already exists for the current key ID.');
+        }
+        if (!touch($previousPath, time())) {
+            throw new RuntimeException('Could not refresh the previous public-key overlap window.');
         }
     } else {
         oidcAtomicWrite($previousPath, $oldDetails['key'], 0640);
