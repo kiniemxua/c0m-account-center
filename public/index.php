@@ -16,6 +16,7 @@ use App\Controllers\LanguageController;
 use App\Controllers\OAuthController;
 use App\Controllers\OAuthClientController;
 use App\Controllers\PaymentWebhookController;
+use App\Controllers\EntitlementController;
 
 $router = new Router();
 $router->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
@@ -25,6 +26,8 @@ $router->post('/oauth/authorize', [OAuthController::class, 'authorize']);
 $router->post('/oauth/token', [OAuthController::class, 'token']);
 $router->post('/oauth/revoke', [OAuthController::class, 'revoke']);
 $router->post('/api/v1/webhooks/payments', [PaymentWebhookController::class, 'receive']);
+$router->get('/api/v1/me/entitlements', [EntitlementController::class, 'index']);
+$router->options('/api/v1/me/entitlements', [OAuthController::class, 'preflight']);
 $router->get('/oauth/userinfo', [OAuthController::class, 'userinfo']);
 $router->post('/oauth/userinfo', [OAuthController::class, 'userinfo']);
 $router->options('/oauth/token', [OAuthController::class, 'preflight']);
