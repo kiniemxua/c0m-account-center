@@ -732,16 +732,36 @@ try {
         && in_array($groupKey, array_column($apiMembershipsData['data']['memberships'] ?? [], 'group_key'), true),
         'The central memberships API must return the member group assignments.');
 
+    $plansPage = $request('GET', '/admin/plans', '', $authCookie);
+    httpCheck($plansPage['status'] === 200 && str_contains($plansPage['body'], 'Subscription plans'), 'A Super Admin must access subscription plan administration.');
+    $plansCsrf = '';
+    if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $plansPage['body'], $match)) {
+        $plansCsrf = $match[1];
+    }
+    httpCheck($plansCsrf !== '', 'Subscription plan administration must expose CSRF protection.');
     $planKey = 'http-pro-' . bin2hex(random_bytes(4));
-    $pdo->prepare(
-        "INSERT INTO subscription_plans
-            (plan_key, name, description, price_minor, currency, billing_interval, features, quotas, status)
-         VALUES (:key, 'HTTP Pro', 'HTTP webhook test plan', 1200, 'USD', 'month', :features, :quotas, 'active')"
-    )->execute([
-        'key' => $planKey,
-        'features' => json_encode(['forum_access' => true, 'custom_domain' => true], JSON_THROW_ON_ERROR),
-        'quotas' => json_encode(['subdomains' => 10, 'storage_mb' => 1024], JSON_THROW_ON_ERROR),
-    ]);
+    $planCreate = $request('POST', '/admin/plans/save', http_build_query([
+        '_csrf' => $plansCsrf,
+        'id' => '0',
+        'plan_key' => $planKey,
+        'name' => 'HTTP Pro',
+        'description' => 'HTTP plan administration test.',
+        'price_minor' => '1200',
+        'currency' => 'USD',
+        'billing_interval' => 'month',
+        'features_json' => '{"forum_access":true,"custom_domain":true}',
+        'quotas_json' => '{"subdomains":10,"storage_mb":1024}',
+        'status' => 'active',
+        'sort_order' => '10',
+    ]), $authCookie);
+    httpCheck($planCreate['status'] === 303, 'A Super Admin must create a subscription plan through the browser UI.');
+    $planLookup = $pdo->prepare('SELECT id, features, quotas FROM subscription_plans WHERE plan_key = :key');
+    $planLookup->execute(['key' => $planKey]);
+    $planRow = $planLookup->fetch();
+    httpCheck($planRow && json_decode($planRow['features'], true)['forum_access'] === true
+        && json_decode($planRow['quotas'], true)['subdomains'] === 10,
+        'Subscription plan feature flags and quotas must persist as JSON objects.');
+    $planId = (int)$planRow['id'];
     $paymentEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $paymentEventId;
     $providerSubscriptionId = 'sub-' . bin2hex(random_bytes(8));
