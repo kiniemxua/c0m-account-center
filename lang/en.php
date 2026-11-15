@@ -19,7 +19,7 @@ return [
 'Sign out other devices' => 'Sign out other devices', 'Revoke session' => 'Revoke session',
 'No active sessions found.' => 'No active sessions found.', 'This device' => 'This device',
 'Recent successful sign-ins associated with this account.' => 'Recent successful sign-ins associated with this account.',
-'No login history is available yet.' => 'No login history is available yet.', 'Account status' => 'Account status', 'Members' => 'Members',
+'No login history is available yet.' => 'No login history is available yet.', 'Account status' => 'Account status', 'Manage your profile' => 'Manage your profile', 'No applications yet' => 'No applications yet', 'Members' => 'Members',
 'Manage member account status and role assignments. Permissions are enforced on the server.' => 'Manage member account status and role assignments. Permissions are enforced on the server.',
 'Settings' => 'Settings', 'Registration' => 'Registration', 'Control whether new member accounts can be created.' => 'Control whether new member accounts can be created.',
 'Allow new registrations' => 'Allow new registrations', 'Save settings' => 'Save settings', 'Manage members' => 'Manage members',
