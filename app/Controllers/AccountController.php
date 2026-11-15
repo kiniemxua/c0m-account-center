@@ -6,7 +6,9 @@ namespace App\Controllers;
 use App\Core\Authorization;
 use App\Core\Csrf;
 use App\Core\Database;
+use App\Core\EmailTemplates;
 use App\Core\MailService;
+use App\Core\Localization;
 use PDO;
 use Throwable;
 
@@ -28,7 +30,7 @@ final class AccountController
         $account = $stmt->fetch();
         if (!$account) {
             http_response_code(404);
-            exit('Account not found.');
+            exit(\App\Core\t('Account not found.'));
         }
         $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
         $error = null;
@@ -39,7 +41,7 @@ final class AccountController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId < 1) {
@@ -57,7 +59,7 @@ final class AccountController
             || !in_array($language, ['vi', 'en'], true)
             || !in_array($timezone, \DateTimeZone::listIdentifiers(), true)) {
             http_response_code(422);
-            $error = 'Please check your display name, username, language and timezone.';
+            $error = Localization::translate("Please check your display name, username, language and timezone.");
             $this->renderWithInput($userId, $error);
             return;
         }
@@ -81,19 +83,23 @@ final class AccountController
                 'timezone' => $timezone,
             ]);
             $pdo->commit();
+            // Keep the selected account language as the guest preference too,
+            // so it remains active after the user signs out.
+            Localization::set($language);
+            Localization::writeGuestCookie($language);
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) {
                 $pdo->rollBack();
             }
             if ((string)$e->getCode() === '23000') {
                 http_response_code(422);
-                $error = 'That username is already in use.';
+                $error = Localization::translate("That username is already in use.");
                 $this->renderWithInput($userId, $error);
                 return;
             }
             error_log('Profile update failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             http_response_code(500);
-            exit('Profile update failed.');
+            exit(\App\Core\t('Profile update failed.'));
         }
         header('Location: /account?saved=1', true, 303);
     }
@@ -102,7 +108,7 @@ final class AccountController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId < 1) {
@@ -115,7 +121,7 @@ final class AccountController
 
         if (!$this->strongPassword($new) || !hash_equals($new, $confirm)) {
             http_response_code(422);
-            $error = 'The new password must be at least 12 characters with upper/lowercase letters and a number, and both entries must match.';
+            $error = Localization::translate("The new password must be at least 12 characters with upper/lowercase letters and a number, and both entries must match.");
             $this->renderWithInput($userId, $error);
             return;
         }
@@ -124,27 +130,27 @@ final class AccountController
         if ($this->passwordChangeRateLimited($pdo, $userId)) {
             http_response_code(429);
             header('Retry-After: 900');
-            $error = 'Too many password-change attempts. Please wait and try again.';
+            $error = Localization::translate("Too many password-change attempts. Please wait and try again.");
             $this->renderWithInput($userId, $error);
             return;
         }
 
         $pdo->beginTransaction();
         try {
-            $lookup = $pdo->prepare('SELECT email, password_hash FROM users WHERE id = :id AND status = \'active\' FOR UPDATE');
+            $lookup = $pdo->prepare('SELECT u.email, u.password_hash, p.language FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.id = :id AND u.status = \'active\' FOR UPDATE');
             $lookup->execute(['id' => $userId]);
             $user = $lookup->fetch();
             if (!$user || !password_verify($current, $user['password_hash'])) {
                 $pdo->rollBack();
                 http_response_code(422);
-                $error = 'The current password is incorrect.';
+                $error = Localization::translate("The current password is incorrect.");
                 $this->renderWithInput($userId, $error);
                 return;
             }
             if (password_verify($new, $user['password_hash'])) {
                 $pdo->rollBack();
                 http_response_code(422);
-                $error = 'Choose a password different from your current password.';
+                $error = Localization::translate("Choose a password different from your current password.");
                 $this->renderWithInput($userId, $error);
                 return;
             }
@@ -166,15 +172,12 @@ final class AccountController
             }
             error_log('Password change failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             http_response_code(500);
-            exit('Password change failed.');
+            exit(\App\Core\t('Password change failed.'));
         }
 
         try {
-            MailService::send(
-                $user['email'],
-                'Your c0m.me password was changed',
-                "The password for your c0m.me account was changed. All active sessions were signed out. If you did not make this change, contact support immediately."
-            );
+            $mail = EmailTemplates::passwordChanged((string)($user['language'] ?? 'vi'));
+            MailService::send($user['email'], $mail['subject'], $mail['text']);
         } catch (Throwable $e) {
             error_log('Password-change notification could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }

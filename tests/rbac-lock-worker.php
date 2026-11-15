@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 define('BASE_PATH', dirname(__DIR__));
+date_default_timezone_set('UTC');
 spl_autoload_register(static function (string $class): void {
     $prefix = 'App\\';
     if (str_starts_with($class, $prefix)) {
@@ -22,6 +23,7 @@ $pdo = new PDO(
     getenv('DB_PASSWORD') ?: '',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
 );
+$pdo->exec("SET time_zone = '+00:00'");
 
 try {
     $pdo->beginTransaction();

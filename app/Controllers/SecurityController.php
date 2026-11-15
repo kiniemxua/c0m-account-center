@@ -38,13 +38,13 @@ final class SecurityController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         $sessionHash = strtolower(trim((string)($_POST['session_id'] ?? '')));
         if ($userId < 1 || !preg_match('/^[a-f0-9]{64}$/', $sessionHash)) {
             http_response_code(400);
-            exit('Invalid session reference.');
+            exit(\App\Core\t('Invalid session reference.'));
         }
         $stmt = Database::connection()->prepare(
             'UPDATE sessions SET revoked_at = NOW()
@@ -64,7 +64,7 @@ final class SecurityController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $userId = (int)($_SESSION['user_id'] ?? 0);
         if ($userId < 1) {

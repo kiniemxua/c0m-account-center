@@ -1,0 +1,171 @@
+<?php
+declare(strict_types=1);
+define('BASE_PATH', dirname(__DIR__));
+spl_autoload_register(static function (string $class): void {
+    if (str_starts_with($class, 'App\\')) {
+        $file = BASE_PATH . '/app/' . str_replace('\\', '/', substr($class, 4)) . '.php';
+        if (is_file($file)) require $file;
+    }
+});
+function localeCheck(bool $ok, string $message): void { if (!$ok) throw new RuntimeException($message); }
+$vi = App\Core\Localization::all('vi');
+$en = App\Core\Localization::all('en');
+$catalogKeys = static function (string $locale): array {
+    $source = file_get_contents(BASE_PATH . '/lang/' . $locale . '.php');
+    localeCheck($source !== false, 'Translation catalog source must be readable: ' . $locale);
+    preg_match_all('~(?:^|,)\\s*([\'"])(.*?)\\1\\s*=>~m', $source, $matches);
+    return $matches[2] ?? [];
+};
+foreach (['vi', 'en'] as $catalogLocale) {
+    $keys = $catalogKeys($catalogLocale);
+    localeCheck(count($keys) === count(array_unique($keys)), 'Translation catalog must not contain duplicate keys: ' . $catalogLocale);
+}
+localeCheck($vi !== [] && $en !== [], 'Both translation catalogs must load.');
+localeCheck(isset($vi['Apply'], $en['Apply']) && $vi['Apply'] === 'Áp dụng' && $en['Apply'] === 'Apply', 'Language switcher action must be translated in both catalogs.');
+foreach (['account.profile.updated','account.password.changed','user.status.changed','user.role.changed','ci.audit.test','active','pending','suspended','banned','member','admin','super_admin','NO ROLE'] as $adminKey) {
+    localeCheck(isset($vi[$adminKey], $en[$adminKey]) && $vi[$adminKey] !== '' && $en[$adminKey] !== '', 'Admin state/audit label must be translated in both catalogs: ' . $adminKey);
+}
+localeCheck(App\Core\Localization::current() === 'vi', 'Vietnamese must be the default locale.');
+localeCheck(App\Core\Localization::all('../config/database') === $vi, 'Unsupported locale codes must never be treated as translation file paths.');
+App\Core\Localization::set('../config/database');
+localeCheck(App\Core\Localization::current() === 'vi', 'Setting an unsupported locale must safely select Vietnamese.');
+$_SESSION = ['locale' => '../config/database'];
+$_COOKIE = ['c0m_lang' => 'en'];
+App\Core\Localization::initialize();
+localeCheck(App\Core\Localization::current() === 'en', 'An invalid guest session locale must be ignored in favor of a valid cookie locale.');
+$_SESSION = [];
+$_COOKIE = ['c0m_lang' => '../config/database'];
+App\Core\Localization::initialize();
+localeCheck(App\Core\Localization::current() === 'vi', 'An invalid guest cookie locale must fall back to Vietnamese.');
+$_SESSION = [];
+$_COOKIE = [];
+App\Core\Localization::set('vi');
+$missingVi = array_diff(array_keys($en), array_keys($vi));
+$missingEn = array_diff(array_keys($vi), array_keys($en));
+localeCheck($missingVi === [] && $missingEn === [], 'Translation catalogs must have identical key coverage.');
+$placeholderNames = static function (string $text): array {
+    preg_match_all('/\\{([a-zA-Z0-9_]+)\\}/', $text, $matches);
+    $names = array_values(array_unique($matches[1] ?? []));
+    sort($names);
+    return $names;
+};
+foreach (array_keys($vi) as $translationKey) {
+    localeCheck(
+        $placeholderNames((string)$vi[$translationKey]) === $placeholderNames((string)$en[$translationKey]),
+        'Vietnamese and English translations must preserve the same placeholders: ' . $translationKey
+    );
+}
+$partialSource = file_get_contents(BASE_PATH . '/app/Views/partials/language-switcher.php');
+localeCheck($partialSource !== false && str_contains($partialSource, 'window.C0M_I18N') && str_contains($partialSource, 'sessionStorage') && str_contains($partialSource, 'formIndex') && str_contains($partialSource, "'password'"), 'JavaScript must receive localized messages and preserve non-password form state.');
+$bootstrapSource = file_get_contents(BASE_PATH . '/app/Core/bootstrap.php');
+localeCheck($bootstrapSource !== false && str_contains($bootstrapSource, "'/lang/'") && str_contains($bootstrapSource, 'c0m_lang'), 'HTTPS bootstrap errors must use the selected language catalog.');
+$installerSource = file_get_contents(BASE_PATH . '/public/installer/index.php');
+localeCheck($installerSource !== false && str_contains($installerSource, '$installerLocale') && str_contains($installerSource, '$installerT'), 'Installer must use the language catalog and locale switcher.');
+$installerStatic = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $installerSource) ?? $installerSource;
+$installerStatic = preg_replace('~<script\\b[^>]*>.*?</script>|<style\\b[^>]*>.*?</style>|<[^>]+>~is', ' ', $installerStatic) ?? $installerStatic;
+$installerStatic = str_ireplace('c0m.me', '', html_entity_decode($installerStatic, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+localeCheck(!preg_match('/[A-Za-z]{2,}/', $installerStatic), 'Untranslated static HTML text remains in the installer: ' . trim($installerStatic));
+
+$controllerFiles = glob(BASE_PATH . '/app/Controllers/*.php') ?: [];
+foreach ($controllerFiles as $controllerFile) {
+    $controllerSource = file_get_contents($controllerFile);
+    localeCheck($controllerSource !== false, 'Controller source must be readable.');
+    localeCheck(!preg_match('~\\$(?:error|message)\\s*=\\s*["\\x27]~', $controllerSource) && !preg_match('~exit\\s*\\(\\s*["\\x27]~', $controllerSource), 'Controllers must assign translated messages, not hardcoded interface copy: ' . basename($controllerFile));
+}
+$sourceFiles = array_merge(
+    glob(BASE_PATH . '/app/Views/*.php') ?: [],
+    glob(BASE_PATH . '/app/Views/partials/*.php') ?: [],
+    glob(BASE_PATH . '/app/Controllers/*.php') ?: [],
+    glob(BASE_PATH . '/app/Core/*.php') ?: [],
+    [BASE_PATH . '/public/installer/index.php']
+);
+$requiredKeys = [];
+foreach ($sourceFiles as $sourceFile) {
+    $source = file_get_contents($sourceFile);
+    localeCheck($source !== false, 'Application source must be readable: ' . basename($sourceFile));
+    if (preg_match_all('~(?:\\bt|Localization::translate|\\$installerT)\\s*\\(\\s*(["\\x27])(.*?)\\1~s', $source, $matches)) {
+        foreach ($matches[2] as $key) $requiredKeys[$key] = true;
+    }
+    if (preg_match_all('~\\$(?:error|message)\\s*=\\s*(["\\x27])(.*?)\\1~s', $source, $messages)) {
+        foreach ($messages[2] as $key) $requiredKeys[$key] = true;
+    }
+}
+foreach (array_keys($requiredKeys) as $key) {
+    localeCheck(array_key_exists($key, $vi), 'Missing Vietnamese translation: ' . $key);
+    localeCheck(array_key_exists($key, $en), 'Missing English translation: ' . $key);
+}
+
+$authorizationSource = file_get_contents(BASE_PATH . '/app/Core/Authorization.php');
+localeCheck($authorizationSource !== false && str_contains($authorizationSource, "t('You do not have permission") && str_contains($authorizationSource, "t('Authentication required.") && !preg_match('~exit\\s*\\(\\s*["\\x27]~', $authorizationSource), 'Authorization errors must be localized.');
+$routerSource = file_get_contents(BASE_PATH . '/public/index.php');
+localeCheck($routerSource !== false && str_contains($routerSource, "'/admin/audit'"), 'The audit log route must be registered.');
+localeCheck(is_file(BASE_PATH . '/app/Views/admin-audit.php'), 'The localized audit log view must exist.');
+$auditView = file_get_contents(BASE_PATH . '/app/Views/admin-audit.php');
+localeCheck($auditView !== false && str_contains($auditView, '\App\Core\t((string)$event[\'action\'])') && str_contains($auditView, 'htmlspecialchars((string)$event[\'metadata\']') && str_contains($auditView, 'htmlspecialchars($event[\'ip_display\']'), 'Audit action labels and untrusted metadata/IP values must be localized and HTML-escaped.');
+$viewFiles = glob(BASE_PATH . '/app/Views/*.php') ?: [];
+foreach ($viewFiles as $viewFile) {
+    $viewSource = file_get_contents($viewFile);
+    localeCheck($viewSource !== false && str_contains($viewSource, 'Localization::current()'), 'Every application page must declare the active locale: ' . basename($viewFile));
+    $plainHtml = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $viewSource) ?? $viewSource;
+    $staticText = preg_replace('~<script\\b[^>]*>.*?</script>|<style\\b[^>]*>.*?</style>|<[^>]+>~is', ' ', $plainHtml) ?? $plainHtml;
+    $staticText = str_ireplace('c0m.me', '', html_entity_decode($staticText, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    localeCheck(!preg_match('/[A-Za-z]{2,}/', $staticText), 'Untranslated static HTML text remains in ' . basename($viewFile) . ': ' . trim($staticText));
+    foreach (['New here?', 'Create account</button>', 'User administration — c0m.me', 'Forgot password — c0m.me', 'Reset password — c0m.me', 'Verify email — c0m.me', 'Your digital home</title>', 'App Hub</h2>', 'Last activity:', 'Expires:', 'placeholder="optional"', 'Center</footer>'] as $rawCopy) { localeCheck(!str_contains($plainHtml, $rawCopy), 'Hardcoded interface copy remains in ' . basename($viewFile) . ': ' . $rawCopy); }
+    localeCheck(!str_contains($viewSource, 'Localization::translate($error)') && !str_contains($viewSource, 't($error)'), 'Views must not translate already-localized controller messages twice: ' . basename($viewFile));
+    localeCheck(str_contains($viewSource, "partials/language-switcher.php"), 'Every application page must expose the language switcher: ' . basename($viewFile));
+}
+
+$partialFiles = glob(BASE_PATH . '/app/Views/partials/*.php') ?: [];
+foreach ($partialFiles as $partialFile) {
+    $partialSource = file_get_contents($partialFile);
+    localeCheck($partialSource !== false, 'View partial source must be readable: ' . basename($partialFile));
+    $partialHtml = preg_replace('~<\\?(?:php|=).*?\\?>~s', '', $partialSource) ?? $partialSource;
+    $partialText = preg_replace('~<script\\b[^>]*>.*?</script>|<style\\b[^>]*>.*?</style>|<[^>]+>~is', ' ', $partialHtml) ?? $partialHtml;
+    $partialText = str_ireplace('c0m.me', '', html_entity_decode($partialText, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    localeCheck(!preg_match('/[A-Za-z]{2,}/', $partialText), 'Untranslated static HTML text remains in partial ' . basename($partialFile) . ': ' . trim($partialText));
+}
+
+localeCheck(str_contains($vi['Welcome back'] ?? '', 'Chào mừng'), 'Vietnamese UTF-8 text must be preserved.');
+localeCheck(($en['Welcome back'] ?? '') === 'Welcome back', 'English catalog must contain English copy.');
+localeCheck(App\Core\Localization::translate('unknown.internal.key') === 'Thông báo hệ thống', 'Vietnamese fallback must be localized and must not expose raw keys.');
+localeCheck(App\Core\Localization::translate('An untranslated interface phrase') === 'Thông báo hệ thống', 'Readable source phrases must not leak when a translation is missing.');
+App\Core\Localization::set('vi');
+localeCheck(App\Core\Localization::translate('Hello {name}', ['name' => 'Lan']) === 'Xin chào Lan', 'Vietnamese placeholder replacement must work.');
+App\Core\Localization::set('en');
+localeCheck(App\Core\Localization::translate('Hello {name}', ['name' => 'Lan']) === 'Hello Lan', 'English placeholder replacement must work.');
+localeCheck(App\Core\Localization::translate('unknown.internal.key') === 'System message', 'English fallback must be localized and must not expose raw keys.');
+localeCheck(App\Core\Localization::translate('An untranslated interface phrase') === 'System message', 'English fallback must not echo untranslated source phrases.');
+foreach (['vi','en','xx'] as $locale) {
+    $v = App\Core\EmailTemplates::verification($locale, 'Nguyễn An', 'https://example.test/verify?token=abc');
+    $p = App\Core\EmailTemplates::passwordReset($locale, 'Lan', 'https://example.test/reset?token=def');
+    $s = App\Core\EmailTemplates::passwordChanged($locale);
+    localeCheck(str_contains($v['text'], 'https://example.test/verify?token=abc'), 'Verification URL must remain unchanged.');
+if ($locale === 'vi') localeCheck(str_contains($v['text'], 'Xin chào Nguyễn An'), 'Vietnamese verification email must preserve UTF-8 recipient names.');
+if ($locale === 'en') localeCheck(str_contains($v['text'], 'Hello Nguyễn An'), 'English verification email must preserve the recipient name.');
+    if ($locale === 'xx') localeCheck(str_contains($v['text'], 'Xin chào'), 'Unsupported email locales must safely fall back to Vietnamese.');
+    localeCheck(str_contains($p['text'], 'https://example.test/reset?token=def'), 'Reset URL must remain unchanged.');
+    localeCheck($v['subject'] !== '' && $p['subject'] !== '' && $s['subject'] !== '', 'Localized email subjects must be present.');
+    if ($locale === 'vi') localeCheck(str_contains($p['text'], 'Xin chào') && str_contains($s['text'], 'Mật khẩu'), 'Reset and security emails must be Vietnamese.');
+    if ($locale === 'en') localeCheck(str_contains($p['text'], 'Hello') && str_contains($s['text'], 'password'), 'Reset and security emails must be English.');
+}
+App\Core\Localization::set('vi');
+$js = App\Core\Localization::javascriptMessages(['Confirm', 'Cancel']);
+localeCheck(($js['Confirm'] ?? '') === 'Xác nhận', 'JavaScript message payload must use the active locale.');
+App\Core\Localization::set('en');
+$js = App\Core\Localization::javascriptMessages(['Confirm', 'Cancel']);
+localeCheck(($js['Confirm'] ?? '') === 'Confirm', 'English JavaScript messages must use the active locale.');
+App\Core\Localization::set('vi');
+App\Core\Localization::persistGuest('en');
+localeCheck(App\Core\Localization::current() === 'en', 'Guest locale selection must update immediately.');
+App\Core\Localization::persistGuest('vi');
+localeCheck(App\Core\Localization::current() === 'vi', 'Guest locale can return to Vietnamese.');
+
+foreach (["ACCOUNT CENTER","PROFILE","optional","SECURITY","ADMINISTRATION","ADMIN SETTINGS","MEMBER DASHBOARD","Your account hub is being built. Application directory and security controls will appear here as their modules are implemented.","ACCOUNT","APPLICATIONS","ACCOUNT RECOVERY","ONE ACCOUNT · YOUR ECOSYSTEM","Manage your profile, sessions and account security.","Discover connected applications from one app hub.","Passkeys, two-step verification and connected apps.","Account Center","ACCOUNT SECURITY","SUCCESSFUL SIGN-IN","FAILED SIGN-IN","Your password was changed. Please sign in again.","If the request can be completed, an email will be sent shortly.","Email address to resend verification","Resend verification email","This reset link is invalid, expired or already used. Request another link.","Your password has been updated. All active sessions have been revoked.","The reset link is invalid, expired or already used, or the password did not meet the requirements.","THIS DEVICE","ACTIVE SESSION","Email verification","EMAIL VERIFICATION","Confirm that this email address belongs to you. The link can only be used once.","This verification link is invalid, expired or already used. Request a new verification email if your account is still pending.","Your account is active. You can now sign in.","This link is invalid, expired or has already been used."] as $viewKey) {
+    localeCheck(isset($vi[$viewKey]) && trim($vi[$viewKey]) !== '', 'Vietnamese catalog value must be present: ' . $viewKey);
+    localeCheck(isset($en[$viewKey]) && trim($en[$viewKey]) !== '', 'English catalog value must be present: ' . $viewKey);
+    localeCheck(App\Core\Localization::translate($viewKey) !== $viewKey, 'Public and account views must have a translated catalog entry: ' . $viewKey);
+    App\Core\Localization::set('en');
+    localeCheck(App\Core\Localization::translate($viewKey) === ($en[$viewKey] ?? null), 'English view copy must be served from the English catalog, not a fallback: ' . $viewKey);
+    App\Core\Localization::set('vi');
+}
+echo "Localization catalog and email template tests passed.\n";

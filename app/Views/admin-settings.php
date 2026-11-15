@@ -1,2 +1,21 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Account settings — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css"></head><body><main class="auth-wrap"><a class="brand" href="/dashboard">c0m.me</a><section class="auth-card"><span class="eyebrow">ADMIN SETTINGS</span><h1>Registration</h1><p>Control whether new member accounts can be created.</p><form method="post" action="/admin/settings"><input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>"><label><input type="checkbox" name="registration_enabled" value="1" <?= $enabled ? 'checked' : '' ?>> Allow new registrations</label><button class="button full" type="submit">Save settings</button></form><small><a href="/admin/users">Manage members</a></small></section></main></body></html>
+<html lang="<?= \App\Core\Localization::current() ?>">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title><?= \App\Core\t('Account settings') ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css">
+</head>
+<body><?php require __DIR__ . '/partials/language-switcher.php'; ?>
+<main class="auth-wrap">
+<a class="brand" href="/dashboard">c0m.me</a>
+<?php if ($canViewAudit): ?><a class="nav-link" href="/admin/audit"><?= \App\Core\t('Audit log') ?></a><?php endif; ?>
+<section class="auth-card">
+<span class="eyebrow"><?= \App\Core\t('ADMIN SETTINGS') ?></span>
+<h1><?= \App\Core\t('Registration') ?></h1>
+<p><?= \App\Core\t('Control whether new member accounts can be created.') ?></p>
+<form method="post" action="/admin/settings">
+<input type="hidden" name="_csrf" value="<?= htmlspecialchars(\App\Core\Csrf::token(), ENT_QUOTES, 'UTF-8') ?>">
+<label><input type="checkbox" name="registration_enabled" value="1" <?= $enabled ? 'checked' : '' ?>> <?= \App\Core\t('Allow new registrations') ?></label>
+<button class="button full" type="submit"><?= \App\Core\t('Save settings') ?></button>
+</form>
+<small><a href="/admin/users"><?= \App\Core\t('Manage members') ?></a></small>
+</section></main></body></html>
