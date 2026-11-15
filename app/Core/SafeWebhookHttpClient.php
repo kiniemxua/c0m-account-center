@@ -26,7 +26,9 @@ final class SafeWebhookHttpClient
             throw new RuntimeException('invalid_endpoint');
         }
 
-        $host = strtolower(rtrim(trim((string)$parts['host'], '[]'), '.'));
+        $rawHost = trim((string)$parts['host'], '[]');
+        if ($rawHost === '' || str_ends_with($rawHost, '.')) throw new RuntimeException('invalid_endpoint');
+        $host = strtolower($rawHost);
         if ($host === '' || preg_match('/[\x00-\x20\x7f]/', $host)) {
             throw new RuntimeException('invalid_endpoint');
         }
