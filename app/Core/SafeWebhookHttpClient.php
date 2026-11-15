@@ -31,7 +31,12 @@ final class SafeWebhookHttpClient
             throw new RuntimeException('invalid_endpoint');
         }
 
-        if (filter_var($host, FILTER_VALIDATE_IP) !== false) {
+        if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
+            // IPv6 literal authorities require a different CURLOPT_RESOLVE
+            // host syntax. DNS names with public AAAA records remain supported.
+            throw new RuntimeException('invalid_endpoint');
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             $addresses = [$host];
         } else {
             if (filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
