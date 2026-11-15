@@ -17,7 +17,15 @@ The authorization endpoint requires `response_type=code`, `state`, an exact regi
 
 Access tokens are opaque random values stored only as hashes. Access tokens expire after 15 minutes. Refresh tokens expire after 30 days and rotate on every successful use. Reuse of an already rotated refresh token revokes the associated token family, including its access tokens. Revocation is scoped to the authenticated client.
 
-ID tokens are signed with RS256 using an RSA key of at least 2048 bits. The signing key is generated on first use and stored at `storage/oauth-signing-private.pem` with owner-only permissions. The private key must remain outside the public document root. Back it up securely; losing it invalidates the ability to verify tokens signed by that key. Key rotation and historical JWKS retention are not yet implemented.
+ID tokens are signed with RS256 using an RSA key of at least 2048 bits. The signing key is generated on first use and stored at `storage/oauth-signing-private.pem` with owner-only permissions. The private key must remain outside the public document root and must be included in encrypted backups.
+
+Rotate the active signing key from the application root with:
+
+```sh
+php scripts/rotate-oidc-signing-key.php
+```
+
+The command takes an exclusive rotation lock, generates a replacement RSA-2048 key, atomically replaces the active private key and preserves only the previous public key in `storage/oauth-signing-previous/`. The JWKS endpoint publishes the active key first and valid previous public keys for a 24-hour overlap; expired, malformed, symlinked or mismatched-key files are ignored. The previous private key is never retained. Run the command once per rotation and monitor the output; losing the active private key still prevents issuing new ID tokens, so encrypted backup and recovery remain essential.
 
 ## Scopes
 
@@ -110,13 +118,9 @@ CORS is not authentication. Every endpoint still validates the bearer token or c
 ## Operational and security limitations
 
 Before production use, complete and review:
-- per-client audit history UI
-- signing-key rotation with overlap and historical JWKS publication
-- token and authorization endpoint rate limits, anomaly monitoring and abuse controls
+- broader rate limiting and anomaly monitoring across authorization, UserInfo and revocation endpoints (invalid token grants and client-authentication failures are already throttled)
 - a formal OIDC conformance review and independent security review
 - provider-specific checkout, renewal, failure, refund and cancellation adapters
-- signing-key rotation with overlap and historical JWKS publication
-- independent OIDC conformance/security review and product SDKs
 - production HTTPS, secure storage permissions, backup/restore and key recovery procedures
 
 Do not use this implementation as a general-purpose identity provider until those remaining controls have been completed and reviewed.
