@@ -122,7 +122,7 @@ try {
         if ($cookie !== '') {
             $headers[] = 'Cookie: ' . $cookie;
         }
-        if ($method === 'POST') {
+        if ($method === 'POST' && !array_filter($headers, static fn($header): bool => stripos($header, 'Content-Type:') === 0)) {
             $headers[] = 'Content-Type: application/x-www-form-urlencoded';
         }
         $context = stream_context_create(['http' => [
