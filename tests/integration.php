@@ -72,6 +72,19 @@ $authorizationRevisionMigration = file_get_contents(BASE_PATH . '/database/migra
 assertIntegration($authorizationRevisionMigration !== false, 'Authorization revision migration must exist.');
 $pdo->exec($authorizationRevisionMigration);
 $pdo->exec($authorizationRevisionMigration); // Revision storage and legacy backfill must be repeatable.
+$billingMigration = file_get_contents(BASE_PATH . '/database/migrations/009_subscriptions_entitlements_payments.sql');
+assertIntegration($billingMigration !== false, 'Billing migration must exist.');
+$pdo->exec($billingMigration);
+$outboxMigration = file_get_contents(BASE_PATH . '/database/migrations/010_transactional_outbox_webhooks.sql');
+assertIntegration($outboxMigration !== false, 'Transactional outbox migration must exist.');
+$pdo->exec($outboxMigration);
+$billingPermissionMigration = file_get_contents(BASE_PATH . '/database/migrations/011_billing_manage_permission.sql');
+assertIntegration($billingPermissionMigration !== false, 'Billing permission migration must exist.');
+$pdo->exec($billingPermissionMigration);
+$eventOrderingMigration = file_get_contents(BASE_PATH . '/database/migrations/012_subscription_event_ordering.sql');
+assertIntegration($eventOrderingMigration !== false, 'Subscription event ordering migration must exist.');
+$pdo->exec($eventOrderingMigration);
+
 $memberGroupsMigration = file_get_contents(BASE_PATH . '/database/migrations/005_member_groups.sql');
 assertIntegration($memberGroupsMigration !== false, 'Member group migration must exist.');
 $pdo->exec($memberGroupsMigration);
@@ -114,6 +127,54 @@ $userId = (int)$pdo->lastInsertId();
 $pdo->prepare('DELETE FROM user_authorization_revisions WHERE user_id = :id')->execute(['id' => $userId]);
 $pdo->exec($authorizationRevisionMigration);
 assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === 1, 'Reapplying the revision migration must backfill a missing user revision at version 1.');
+
+// Provider subscription events must be applied monotonically; stale events cannot downgrade entitlements.
+$paidPlanKey = 'ci-paid-' . bin2hex(random_bytes(4));
+$pdo->prepare(
+    'INSERT INTO subscription_plans (plan_key, name, price_minor, currency, billing_interval, features, quotas, status)
+     VALUES (:key, \'CI Paid Plan\', 1000, \'USD\', \'month\', :features, :quotas, \'active\')'
+)->execute([
+    'key' => $paidPlanKey,
+    'features' => json_encode(['premium_access' => true], JSON_THROW_ON_ERROR),
+    'quotas' => json_encode(['storage_gb' => 50], JSON_THROW_ON_ERROR),
+]);
+$subscriptionEvent = [
+    'user_id' => $userId,
+    'plan_key' => $paidPlanKey,
+    'provider_subscription_id' => 'ci-sub-' . bin2hex(random_bytes(5)),
+    'status' => 'active',
+    'current_period_start' => '2026-01-01T00:00:00Z',
+    'current_period_end' => '2027-01-01T00:00:00Z',
+    '_event_created_at' => '2026-02-02T12:00:00Z',
+];
+$pdo->beginTransaction();
+$appliedSubscription = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.activated', $subscriptionEvent);
+$pdo->commit();
+assertIntegration(($appliedSubscription['status'] ?? '') === 'active', 'The newest provider subscription event must activate the subscription.');
+$subscriptionId = (int)$appliedSubscription['subscription_id'];
+$revisionBeforeStale = App\Core\AuthorizationRevision::current($pdo, $userId);
+$entitlementsBeforeStale = App\Core\EntitlementService::forUser($pdo, $userId);
+assertIntegration(isset($entitlementsBeforeStale['feature.premium_access']) && isset($entitlementsBeforeStale['quota.storage_gb']), 'The active paid subscription must grant its feature and quota entitlements.');
+$pdo->beginTransaction();
+$staleResult = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
+    'status' => 'past_due',
+    '_event_created_at' => '2026-02-01T12:00:00Z',
+]));
+$pdo->commit();
+assertIntegration(!empty($staleResult['stale_event']), 'An older provider event must be explicitly rejected as stale.');
+$subscriptionState = $pdo->prepare('SELECT status, provider_event_created_at FROM subscriptions WHERE id = :id');
+$subscriptionState->execute(['id' => $subscriptionId]);
+$subscriptionAfterStale = $subscriptionState->fetch();
+assertIntegration($subscriptionAfterStale && $subscriptionAfterStale['status'] === 'active'
+    && $subscriptionAfterStale['provider_event_created_at'] === '2026-02-02 12:00:00.000000',
+    'A stale past_due event must not alter subscription status or the accepted event timestamp.');
+assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === $revisionBeforeStale,
+    'A stale provider event must not bump authorization revision.');
+assertIntegration(App\Core\EntitlementService::forUser($pdo, $userId) === $entitlementsBeforeStale,
+    'A stale provider event must not revoke or change member entitlements.');
+$pdo->prepare('DELETE FROM subscriptions WHERE id = :id')->execute(['id' => $subscriptionId]);
+$pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $paidPlanKey]);
+
 
 // Account language is authoritative over stale session/cookie values; invalid saved values safely fall back.
 $_SESSION = ['user_id' => $userId, 'locale' => 'en'];
