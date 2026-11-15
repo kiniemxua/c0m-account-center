@@ -379,12 +379,64 @@ final class OAuthController
         } else {
             $clientId = is_string($_POST['client_id'] ?? null) ? $_POST['client_id'] : '';
         }
-        $client = $this->clientById($clientId);
-        if (!$client || $client['status'] !== 'active' || $client['application_status'] !== 'active') return null;
-        if ($client['client_type'] === 'confidential') {
-            return OAuthService::verifyClientSecret($client, $secret) ? $client : null;
+        if (!preg_match('/\A[a-f0-9]{64}\z/D', $clientId) || $this->clientAuthenticationRateLimited($clientId)) {
+            return null;
         }
-        return $secret === '' ? $client : null;
+        $client = $this->clientById($clientId);
+        if (!$client || $client['status'] !== 'active' || $client['application_status'] !== 'active') {
+            $this->recordClientAuthenticationFailure($clientId);
+            return null;
+        }
+        if ($client['client_type'] === 'confidential') {
+            if (!OAuthService::verifyClientSecret($client, $secret)) {
+                $this->recordClientAuthenticationFailure($clientId);
+                return null;
+            }
+            return $client;
+        }
+        if ($secret !== '') {
+            $this->recordClientAuthenticationFailure($clientId);
+            return null;
+        }
+        return $client;
+    }
+
+    private function clientAuthenticationRateLimited(string $clientId): bool
+    {
+        $pdo = Database::connection();
+        $identifier = hash('sha256', $clientId);
+        $byClient = $pdo->prepare(
+            "SELECT COUNT(*) FROM auth_attempts
+             WHERE action = 'oauth_client_auth' AND identifier_hash = :identifier
+               AND created_at >= (UTC_TIMESTAMP() - INTERVAL 15 MINUTE)"
+        );
+        $byClient->execute(['identifier' => $identifier]);
+        if ((int)$byClient->fetchColumn() >= 10) return true;
+
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        if ($ip === false) return false;
+        $packedIp = inet_pton($ip);
+        $byIp = $pdo->prepare(
+            "SELECT COUNT(*) FROM auth_attempts
+             WHERE action = 'oauth_client_auth' AND ip_address = :ip
+               AND created_at >= (UTC_TIMESTAMP() - INTERVAL 15 MINUTE)"
+        );
+        $byIp->bindValue(':ip', $packedIp, PDO::PARAM_LOB);
+        $byIp->execute();
+        return (int)$byIp->fetchColumn() >= 30;
+    }
+
+    private function recordClientAuthenticationFailure(string $clientId): void
+    {
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        $packedIp = $ip !== false ? inet_pton($ip) : null;
+        $stmt = Database::connection()->prepare(
+            "INSERT INTO auth_attempts (action, ip_address, identifier_hash)
+             VALUES ('oauth_client_auth', :ip, :identifier)"
+        );
+        $stmt->bindValue(':ip', $packedIp, $packedIp === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $stmt->bindValue(':identifier', hash('sha256', $clientId));
+        $stmt->execute();
     }
 
     private function idToken(array $client, int $userId, array $scopes, ?string $nonce, int $authTime): string
