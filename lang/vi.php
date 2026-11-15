@@ -279,4 +279,5 @@ return [
 
 'Review active devices and recent sign-ins.' => 'Xem các thiết bị đang hoạt động và những lần đăng nhập gần đây.',
 'Create account' => 'Tạo tài khoản',
+'Review active devices and protect your account.' => 'Xem lại các thiết bị đang hoạt động và bảo vệ tài khoản của bạn.',
 ];
