@@ -59,6 +59,7 @@ final class OAuthController
             'email' => \App\Core\t('View your email address'),
             'groups' => \App\Core\t('View your active member groups'),
             'permissions' => \App\Core\t('View your granted permissions'),
+            'entitlements' => \App\Core\t('View your subscription entitlements'),
         ];
         echo '<!doctype html><html lang="' . htmlspecialchars(\App\Core\Localization::current(), ENT_QUOTES, 'UTF-8') . '"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>' . \App\Core\t('Authorize application') . '</title><link rel="stylesheet" href="/assets/css/app.css"><main class="auth-wrap"><section class="auth-card"><span class="eyebrow">c0m.me</span><h1>' . \App\Core\t('Authorize application') . '</h1><p>' . \App\Core\t('The application wants permission to access your account:') . ' <strong>' . $title . '</strong></p><ul>';
         foreach ($pending['scopes'] as $scope) {
