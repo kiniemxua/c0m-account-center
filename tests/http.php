@@ -33,6 +33,19 @@ $configSource = "<?php\ndeclare(strict_types=1);\nreturn " . var_export($dbConfi
 if (file_put_contents($dbConfigPath, $configSource, LOCK_EX) === false) {
     throw new RuntimeException('Could not create temporary HTTP test configuration.');
 }
+require_once BASE_PATH . '/app/Core/Crypto.php';
+$cryptoSecret = bin2hex(random_bytes(32));
+$encryptedSecret = App\Core\Crypto::encrypt($cryptoSecret);
+httpCheck(!str_contains($encryptedSecret, $cryptoSecret), 'Webhook secrets must be encrypted at rest.');
+httpCheck(App\Core\Crypto::decrypt($encryptedSecret) === $cryptoSecret, 'Webhook secret encryption must round-trip.');
+$encryptedPayload = base64_decode($encryptedSecret, true);
+$encryptedPayload[strlen($encryptedPayload) - 1] = chr(ord($encryptedPayload[strlen($encryptedPayload) - 1]) ^ 1);
+try {
+    App\Core\Crypto::decrypt(base64_encode($encryptedPayload));
+    throw new RuntimeException('Tampered encrypted webhook secrets must be rejected.');
+} catch (RuntimeException $e) {
+    httpCheck($e->getMessage() !== 'Tampered encrypted webhook secrets must be rejected.', 'Authenticated encryption must reject modified ciphertext.');
+}
 if (file_put_contents($appConfigPath, "<?php return ['base_url' => 'https://accounts.example.test', 'trusted_proxies' => ['127.0.0.1']];", LOCK_EX) === false) {
     @unlink($dbConfigPath);
     throw new RuntimeException('Could not create temporary trusted-proxy configuration.');
