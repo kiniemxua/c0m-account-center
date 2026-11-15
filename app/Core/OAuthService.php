@@ -52,7 +52,8 @@ final class OAuthService
         string $redirectUri,
         array $scopes,
         string $challenge,
-        ?string $nonce = null
+        ?string $nonce = null,
+        ?int $authTime = null
     ): string {
         if ($clientId < 1 || $userId < 1 || preg_match('/\A[A-Za-z0-9_-]{43}\z/D', $challenge) !== 1) {
             throw new \InvalidArgumentException('invalid_authorization_request');
@@ -61,8 +62,8 @@ final class OAuthService
         $code = self::base64UrlEncode(random_bytes(32));
         $stmt = $pdo->prepare(
             'INSERT INTO oauth_authorization_codes
-                (client_id, user_id, code_hash, redirect_uri, scopes, code_challenge, nonce, expires_at)
-             VALUES (:client, :user, :hash, :redirect, :scopes, :challenge, :nonce, :expires)'
+                (client_id, user_id, code_hash, redirect_uri, scopes, code_challenge, nonce, auth_time, expires_at)
+             VALUES (:client, :user, :hash, :redirect, :scopes, :challenge, :nonce, :auth_time, :expires)'
         );
         $stmt->execute([
             'client' => $clientId,
@@ -72,6 +73,7 @@ final class OAuthService
             'scopes' => json_encode($scopes, JSON_THROW_ON_ERROR),
             'challenge' => $challenge,
             'nonce' => $nonce,
+            'auth_time' => $authTime !== null && $authTime > 0 ? $authTime : time(),
             'expires' => gmdate('Y-m-d H:i:s', time() + self::AUTH_CODE_TTL),
         ]);
         return $code;
@@ -124,12 +126,14 @@ final class OAuthService
                 return null;
             }
             $scopes = self::decodeScopes($row['scopes']);
-            $tokens = self::issueTokenPair($pdo, (int)$client['id'], (int)$row['user_id'], $scopes);
+            $authTime = (int)$row['auth_time'] > 0 ? (int)$row['auth_time'] : strtotime((string)$row['created_at'] . ' UTC');
+            $tokens = self::issueTokenPair($pdo, (int)$client['id'], (int)$row['user_id'], $scopes, null, $authTime);
             $pdo->commit();
             return $tokens + [
                 'user_id' => (int)$row['user_id'],
                 'scopes' => $scopes,
                 'nonce' => $row['nonce'] === null ? null : (string)$row['nonce'],
+                'auth_time' => $authTime,
                 'authorization_code_id' => (int)$row['id'],
             ];
         } catch (Throwable $e) {
@@ -175,7 +179,8 @@ final class OAuthService
                 return null;
             }
             $scopes = self::decodeScopes($row['scopes']);
-            $pair = self::issueTokenPair($pdo, (int)$client['id'], (int)$row['user_id'], $scopes, (string)$row['family_id']);
+            $authTime = (int)$row['auth_time'] > 0 ? (int)$row['auth_time'] : strtotime((string)$row['created_at'] . ' UTC');
+            $pair = self::issueTokenPair($pdo, (int)$client['id'], (int)$row['user_id'], $scopes, (string)$row['family_id'], $authTime);
             $update = $pdo->prepare(
                 'UPDATE oauth_refresh_tokens SET used_at = UTC_TIMESTAMP(), replaced_by_id = :replacement
                  WHERE id = :id AND used_at IS NULL AND revoked_at IS NULL'
@@ -186,7 +191,7 @@ final class OAuthService
                 return null;
             }
             $pdo->commit();
-            return $pair + ['user_id' => (int)$row['user_id'], 'scopes' => $scopes];
+            return $pair + ['user_id' => (int)$row['user_id'], 'scopes' => $scopes, 'auth_time' => $authTime];
         } catch (Throwable $e) {
             if ($pdo->inTransaction()) $pdo->rollBack();
             throw $e;
@@ -235,7 +240,7 @@ final class OAuthService
         }
     }
 
-    private static function issueTokenPair(PDO $pdo, int $clientId, int $userId, array $scopes, ?string $familyId = null): array
+    private static function issueTokenPair(PDO $pdo, int $clientId, int $userId, array $scopes, ?string $familyId = null, ?int $authTime = null): array
     {
         $access = self::base64UrlEncode(random_bytes(32));
         $refresh = self::base64UrlEncode(random_bytes(48));
@@ -257,13 +262,14 @@ final class OAuthService
         $accessId = (int)$pdo->lastInsertId();
 
         $refreshStmt = $pdo->prepare(
-            'INSERT INTO oauth_refresh_tokens (family_id, client_id, user_id, token_hash, scopes, expires_at)
-             VALUES (:family, :client, :user, :hash, :scopes, :expires)'
+            'INSERT INTO oauth_refresh_tokens (family_id, client_id, user_id, token_hash, scopes, auth_time, expires_at)
+             VALUES (:family, :client, :user, :hash, :scopes, :auth_time, :expires)'
         );
         $refreshStmt->execute([
             'family' => $familyId, 'client' => $clientId, 'user' => $userId,
             'hash' => hash('sha256', $refresh),
             'scopes' => json_encode($scopes, JSON_THROW_ON_ERROR),
+            'auth_time' => $authTime !== null && $authTime > 0 ? $authTime : time(),
             'expires' => gmdate('Y-m-d H:i:s', $refreshExpires),
         ]);
         return [
