@@ -119,4 +119,13 @@ check(($jwks['keys'][0]['kty'] ?? null) === 'RSA' && ($jwks['keys'][0]['alg'] ??
     && ($jwks['keys'][0]['kid'] ?? null) === $jwtHeader['kid']
     && isset($jwks['keys'][0]['n'], $jwks['keys'][0]['e']), 'The public JWKS must publish the active RSA signing key.');
 
+$webhookSecret = bin2hex(random_bytes(32));
+$webhookBody = '{"id":"evt_test","type":"payment.succeeded"}';
+$webhookTimestamp = (string)time();
+$webhookSignature = hash_hmac('sha256', $webhookTimestamp . '.' . $webhookBody, $webhookSecret);
+check(App\Core\PaymentWebhookVerifier::verify($webhookSecret, $webhookBody, 't=' . $webhookTimestamp . ',v1=' . $webhookSignature), 'A valid timestamped payment webhook signature must verify.');
+check(!App\Core\PaymentWebhookVerifier::verify($webhookSecret, $webhookBody . ' ', 't=' . $webhookTimestamp . ',v1=' . $webhookSignature), 'A modified webhook body must fail signature verification.');
+check(!App\Core\PaymentWebhookVerifier::verify($webhookSecret, $webhookBody, 't=' . ($webhookTimestamp - 900) . ',v1=' . $webhookSignature), 'An expired webhook timestamp must be rejected.');
+check(!App\Core\PaymentWebhookVerifier::verify('short', $webhookBody, 't=' . $webhookTimestamp . ',v1=' . $webhookSignature), 'A weak webhook secret must be rejected.');
+
 echo "Unit tests passed.\n";
