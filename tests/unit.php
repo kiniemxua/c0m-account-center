@@ -28,4 +28,42 @@ check(!App\Core\Csrf::verify(str_repeat('0', 64)), 'A different CSRF token must 
 check(!App\Core\Csrf::verify(null), 'A missing CSRF token must be rejected.');
 session_destroy();
 
+// Forwarded headers from arbitrary clients must never enable Secure-cookie trust.
+$_SERVER['HTTPS'] = 'off';
+$_SERVER['REMOTE_ADDR'] = '203.0.113.9';
+$_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+check(!App\Core\SessionManager::requestIsSecure(), 'Untrusted forwarded HTTPS headers must be ignored.');
+$_SERVER['HTTPS'] = 'on';
+check(App\Core\SessionManager::requestIsSecure(), 'Direct HTTPS must be recognized.');
+
+// A configured proxy may assert HTTPS only when its address matches REMOTE_ADDR.
+$configPath = BASE_PATH . '/config/app.php';
+$configExisted = is_file($configPath);
+$oldConfig = $configExisted ? file_get_contents($configPath) : null;
+try {
+    file_put_contents($configPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];");
+    $_SERVER['HTTPS'] = 'off';
+    $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+    $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https';
+    check(App\Core\SessionManager::requestIsSecure(), 'A configured trusted proxy may assert HTTPS.');
+
+    session_name('c0m_proxy_cookie_test');
+    App\Core\SessionManager::start();
+    $proxyCookie = session_get_cookie_params();
+    check(($proxyCookie['secure'] ?? false) === true, 'A trusted HTTPS proxy must set the actual session cookie Secure flag.');
+    session_destroy();
+
+    $_SERVER['REMOTE_ADDR'] = '203.0.113.9';
+    check(!App\Core\SessionManager::requestIsSecure(), 'A non-trusted client must not assert HTTPS through a forwarded header.');
+    $_SERVER['HTTP_X_FORWARDED_PROTO'] = 'https,http';
+    $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+    check(!App\Core\SessionManager::requestIsSecure(), 'Ambiguous forwarded protocol chains must be rejected.');
+} finally {
+    if ($configExisted && $oldConfig !== false) {
+        file_put_contents($configPath, $oldConfig);
+    } else {
+        @unlink($configPath);
+    }
+}
+
 echo "Unit tests passed.\n";

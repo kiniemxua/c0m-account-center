@@ -62,13 +62,24 @@ INSERT IGNORE INTO roles (role_key, label) VALUES
   ('admin', 'Administrator'),
   ('member', 'Member');
 
--- The first provisioned account is the bootstrap administrator on legacy installs.
+-- Bootstrap the first legacy account only once. The setting flag also prevents
+-- later installer retries from silently restoring a Super Admin role that was
+-- intentionally removed after the migration had already been applied.
+INSERT IGNORE INTO app_settings (setting_key, setting_value)
+SELECT 'legacy_superadmin_seeded',
+       IF(EXISTS(SELECT 1 FROM user_roles), '1', '0');
+
 INSERT IGNORE INTO user_roles (user_id, role_id)
 SELECT u.id, r.id FROM users u
 CROSS JOIN roles r
 WHERE r.role_key = 'super_admin'
+  AND (SELECT setting_value FROM app_settings WHERE setting_key = 'legacy_superadmin_seeded') = '0'
 ORDER BY u.id ASC
 LIMIT 1;
+
+UPDATE app_settings
+SET setting_value = '1'
+WHERE setting_key = 'legacy_superadmin_seeded';
 
 INSERT IGNORE INTO permissions (permission_key, label) VALUES
   ('users.view', 'View users'),

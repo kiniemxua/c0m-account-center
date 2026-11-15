@@ -16,4 +16,7 @@ return [
     // 'from_name' => 'c0m.me Account Center',
     // 'helo' => 'accounts.example.com',
     // 'timeout' => 15,
+    // Optional private-CA / endpoint overrides:
+    // 'ca_file' => '/home/account/private-ca.pem',
+    // 'tls_peer_name' => 'smtp.example.com', // defaults to host
 ];

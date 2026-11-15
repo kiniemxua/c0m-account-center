@@ -69,6 +69,47 @@ $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $u
 $superRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'super_admin'");
 $superRole->execute(['id' => $userId]);
 assertIntegration(App\Core\Authorization::isSuperAdmin($userId), 'Super-admin role must be recognized by the authorization service.');
+
+// Re-running the auth migration must not silently restore an intentionally removed role.
+$pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
+$pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'")
+    ->execute(['id' => $userId]);
+$pdo->exec($authMigration);
+assertIntegration(!App\Core\Authorization::isSuperAdmin($userId), 'Reapplying auth migration must not restore a removed Super Admin role.');
+$pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $userId]);
+$superRole->execute(['id' => $userId]);
+
+// Multiple roles must persist and render as individually selected checkboxes.
+$multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['member', 'super_admin']);
+$roleLookup = $pdo->prepare(
+    'SELECT GROUP_CONCAT(r.role_key ORDER BY r.role_key SEPARATOR ", ")
+     FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id'
+);
+$roleLookup->execute(['id' => $userId]);
+assertIntegration($roleLookup->fetchColumn() === 'member, super_admin', 'A member may hold multiple roles at the same time.');
+
+session_name('c0m_roles_test');
+session_start();
+$_SESSION['_csrf'] = App\Core\Csrf::token();
+$users = [[
+    'id' => $userId,
+    'email' => $email,
+    'display_name' => 'Multi-role test',
+    'status' => 'active',
+    'roles' => 'member, super_admin',
+    'role_keys' => $multiRoles,
+]];
+$canManage = true;
+$canAssignRoles = true;
+ob_start();
+require BASE_PATH . '/app/Views/admin-users.php';
+$multiRoleHtml = ob_get_clean();
+assertIntegration(str_contains($multiRoleHtml, 'name="roles[]"'), 'The admin UI must submit a role list rather than a single role.');
+assertIntegration(str_contains($multiRoleHtml, 'value="member" checked') && str_contains($multiRoleHtml, 'value="super_admin" checked'), 'The admin UI must show every existing role as selected.');
+session_destroy();
+$_SESSION = [];
+App\Core\UserRoleManager::replace($pdo, $userId, ['super_admin']);
+
 App\Core\Authorization::audit($userId, 'ci.audit.test', 'user', (string)$userId, ['test' => true]);
 $audit = $pdo->prepare("SELECT COUNT(*) FROM audit_logs WHERE actor_user_id = :id AND action = 'ci.audit.test'");
 $audit->execute(['id' => $userId]);
@@ -94,6 +135,38 @@ try {
     $row = $find->fetch();
     assertIntegration($row && $row['revoked_at'] !== null, 'Logout must revoke the server-side session.');
 
+    session_destroy();
+
+    // Idle expiry must invalidate the PHP session and revoke its DB record.
+    session_start();
+    App\Core\SessionManager::establish($userId);
+    $idleSessionId = session_id();
+    $idleSessionHash = hash('sha256', $idleSessionId);
+    $pdo->prepare('UPDATE sessions SET last_activity = DATE_SUB(NOW(), INTERVAL 31 MINUTE) WHERE id = :id')
+        ->execute(['id' => $idleSessionHash]);
+    session_write_close();
+    session_id($idleSessionId);
+    App\Core\SessionManager::start();
+    assertIntegration(empty($_SESSION['user_id']), 'A session idle for more than 30 minutes must be invalidated.');
+    $idleRevoked = $pdo->prepare('SELECT revoked_at FROM sessions WHERE id = :id');
+    $idleRevoked->execute(['id' => $idleSessionHash]);
+    assertIntegration($idleRevoked->fetchColumn() !== null, 'Idle session expiry must revoke the server-side session record.');
+    session_destroy();
+
+    // Account suspension must invalidate an otherwise live session.
+    session_start();
+    App\Core\SessionManager::establish($userId);
+    $suspendedSessionId = session_id();
+    $suspendedSessionHash = hash('sha256', $suspendedSessionId);
+    $pdo->prepare("UPDATE users SET status = 'suspended' WHERE id = :id")->execute(['id' => $userId]);
+    session_write_close();
+    session_id($suspendedSessionId);
+    App\Core\SessionManager::start();
+    assertIntegration(empty($_SESSION['user_id']), 'A suspended account must not retain an authenticated session.');
+    $suspendedRevoked = $pdo->prepare('SELECT revoked_at FROM sessions WHERE id = :id');
+    $suspendedRevoked->execute(['id' => $suspendedSessionHash]);
+    assertIntegration($suspendedRevoked->fetchColumn() !== null, 'Account suspension must revoke the persisted session.');
+    $pdo->prepare("UPDATE users SET status = 'active' WHERE id = :id")->execute(['id' => $userId]);
     session_destroy();
 } finally {
     $delete = $pdo->prepare('DELETE FROM users WHERE id = :id');
@@ -161,6 +234,25 @@ ob_start();
 $controller->register();
 $duplicateOutput = ob_get_clean();
 assertIntegration(str_contains($duplicateOutput, 'If registration can be completed'), 'Duplicate registration must use the generic response.');
+
+// Registration must honor the administrator-controlled enable/disable setting.
+$pdo->prepare("UPDATE app_settings SET setting_value = '0' WHERE setting_key = 'registration_enabled'")->execute();
+$closedEmail = 'closed-' . bin2hex(random_bytes(5)) . '@example.test';
+http_response_code(200);
+$_POST = [
+    '_csrf' => App\Core\Csrf::token(),
+    'email' => $closedEmail,
+    'display_name' => 'Closed Registration',
+    'password' => 'StrongPassword42',
+];
+ob_start();
+$controller->register();
+ob_end_clean();
+assertIntegration(http_response_code() === 403, 'Registration must return 403 when disabled by an administrator.');
+$closedLookup = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :email');
+$closedLookup->execute(['email' => $closedEmail]);
+assertIntegration((int)$closedLookup->fetchColumn() === 0, 'Disabled registration must not create a pending account.');
+$pdo->prepare("UPDATE app_settings SET setting_value = '1' WHERE setting_key = 'registration_enabled'")->execute();
 
 // Password recovery must use a hashed one-time token and revoke all persisted sessions.
 $_POST = ['_csrf' => App\Core\Csrf::token(), 'email' => $registrationEmail];
@@ -280,6 +372,31 @@ $controller->login();
 ob_end_clean();
 assertIntegration(http_response_code() === 429, 'The next failed attempt must be throttled by account identifier.');
 $pdo->prepare('DELETE FROM login_history WHERE email_attempted = :email')->execute(['email' => $throttleEmail]);
+
+// IP throttling is independent of the attempted account identifier.
+$ipThrottle = inet_pton('127.0.0.1');
+$ipAttempt = $pdo->prepare(
+    'INSERT INTO login_history (user_id, email_attempted, ip_address, user_agent, success)
+     VALUES (NULL, :email, :ip, :ua, 0)'
+);
+for ($attempt = 0; $attempt < 30; $attempt++) {
+    $ipAttempt->bindValue(':email', 'ip-throttle-' . $attempt . '@example.test');
+    $ipAttempt->bindValue(':ip', $ipThrottle, PDO::PARAM_LOB);
+    $ipAttempt->bindValue(':ua', 'c0m-ip-throttle-test');
+    $ipAttempt->execute();
+}
+http_response_code(200);
+$_POST = [
+    '_csrf' => App\Core\Csrf::token(),
+    'email' => 'another-account-' . bin2hex(random_bytes(4)) . '@example.test',
+    'password' => 'WrongPassword99',
+];
+ob_start();
+$controller->login();
+ob_end_clean();
+assertIntegration(http_response_code() === 429, 'Thirty failed attempts from one IP must throttle a different account identifier.');
+$pdo->prepare('DELETE FROM login_history WHERE ip_address = :ip AND user_agent = :ua')
+    ->execute(['ip' => $ipThrottle, 'ua' => 'c0m-ip-throttle-test']);
 App\Core\SessionManager::invalidate();
 
 // Profile preferences must validate and persist through the account controller.

@@ -20,7 +20,7 @@ final class Database
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
         } catch (PDOException $e) {
-            error_log($e->getMessage());
+            error_log('Database connection failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             throw new RuntimeException('Database connection failed.');
         }
     }

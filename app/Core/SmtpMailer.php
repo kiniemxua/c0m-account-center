@@ -28,10 +28,13 @@ final class SmtpMailer implements MailProviderInterface
         $password = (string)($config['password'] ?? '');
         $from = (string)($config['from_email'] ?? '');
         $fromName = (string)($config['from_name'] ?? 'c0m.me Account Center');
+        $tlsPeerName = (string)($config['tls_peer_name'] ?? $host);
+        $caFile = (string)($config['ca_file'] ?? '');
         $timeout = max(5, min(30, (int)($config['timeout'] ?? 15)));
 
         if ($host === '' || $port < 1 || $port > 65535 || !filter_var($from, FILTER_VALIDATE_EMAIL)
-            || preg_match('/[\r\n]/', $host . $username . $fromName)
+            || $tlsPeerName === '' || preg_match('/[\r\n]/', $host . $username . $fromName . $tlsPeerName)
+            || ($caFile !== '' && (!is_file($caFile) || !is_readable($caFile)))
             || !in_array($encryption, ['tls', 'ssl', 'none'], true)) {
             throw new RuntimeException('SMTP configuration is invalid.');
         }
@@ -44,9 +47,16 @@ final class SmtpMailer implements MailProviderInterface
         }
 
         $scheme = $encryption === 'ssl' ? 'ssl://' : 'tcp://';
-        $context = stream_context_create([
-            'ssl' => ['verify_peer' => true, 'verify_peer_name' => true, 'SNI_enabled' => true],
-        ]);
+        $sslOptions = [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+            'SNI_enabled' => true,
+            'peer_name' => $tlsPeerName,
+        ];
+        if ($caFile !== '') {
+            $sslOptions['cafile'] = $caFile;
+        }
+        $context = stream_context_create(['ssl' => $sslOptions]);
         $socket = @stream_socket_client(
             $scheme . $host . ':' . $port,
             $errno,
@@ -108,7 +118,7 @@ final class SmtpMailer implements MailProviderInterface
             self::expect($socket, [250]);
             self::command($socket, 'QUIT', [221]);
         } catch (\Throwable $e) {
-            error_log('SMTP delivery failed: ' . $e->getMessage());
+            error_log('SMTP delivery failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             throw new RuntimeException('Email delivery failed.');
         } finally {
             fclose($socket);

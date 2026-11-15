@@ -37,7 +37,8 @@ return [
 - Port 465 normally uses implicit TLS (`encryption => ssl`).
 - SMTP AUTH is refused when encryption is `none`; do not send credentials over plaintext.
 - Username and password must either both be present or both be empty.
+- TLS peer and hostname verification are always enabled. `tls_peer_name` is optional (defaults to `host`) and `ca_file` can point to a private CA bundle; keep that CA file outside the public document root.
 - Use a sender address/domain authorized by your mail provider.
 - Keep `config/mail.php` outside the public document root, set restrictive permissions and never commit credentials.
 
-A successful local SMTP fixture test proves protocol handling against the fixture only. It does not prove that a live provider account, sender domain, DNS records or deliverability are configured correctly.
+The local SMTP fixture tests STARTTLS, trusted CA validation, hostname mismatch rejection, AUTH failure, timeout and unavailable-server handling. A successful local SMTP fixture test proves protocol handling against the fixture only. It does not prove that a live provider account, sender domain, DNS records or deliverability are configured correctly.

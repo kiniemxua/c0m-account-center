@@ -23,7 +23,7 @@ final class SessionManager
         session_set_cookie_params([
             'lifetime' => 0,
             'path' => '/',
-            'secure' => self::isHttps(),
+            'secure' => self::requestIsSecure(),
             'httponly' => true,
             'samesite' => 'Lax',
         ]);
@@ -32,6 +32,15 @@ final class SessionManager
         if (!empty($_SESSION['user_id'])) {
             self::validateCurrent();
         }
+    }
+
+    /**
+     * Only trust X-Forwarded-Proto when REMOTE_ADDR is explicitly configured
+     * as a trusted proxy. Client-supplied forwarding headers are ignored.
+     */
+    public static function requestIsSecure(): bool
+    {
+        return RequestSecurity::isHttps(BASE_PATH);
     }
 
     public static function establish(int $userId): void
@@ -71,7 +80,7 @@ final class SessionManager
             $stmt = $pdo->prepare('UPDATE sessions SET revoked_at = NOW() WHERE id = :id AND revoked_at IS NULL');
             $stmt->execute(['id' => hash('sha256', session_id())]);
         } catch (Throwable $e) {
-            error_log('Session revocation failed: ' . $e->getMessage());
+            error_log('Session revocation failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
     }
 
@@ -99,7 +108,7 @@ final class SessionManager
             $update = $pdo->prepare('UPDATE sessions SET last_activity = NOW() WHERE id = :id');
             $update->execute(['id' => hash('sha256', session_id())]);
         } catch (Throwable $e) {
-            error_log('Authenticated session validation failed: ' . $e->getMessage());
+            error_log('Authenticated session validation failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             self::invalidate();
         }
     }
@@ -111,10 +120,5 @@ final class SessionManager
         if (session_status() === PHP_SESSION_ACTIVE) {
             session_regenerate_id(true);
         }
-    }
-
-    private static function isHttps(): bool
-    {
-        return isset($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off' && $_SERVER['HTTPS'] !== '';
     }
 }

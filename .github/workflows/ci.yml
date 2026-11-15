@@ -1,22 +1,46 @@
 name: PHP CI
 on:
   push:
-    branches: [main]
+    branches: [main, 'security/**']
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     branches: [main]
+permissions:
+  contents: read
 jobs:
   test:
     runs-on: ubuntu-latest
+    name: test (PHP ${{ matrix.php-version }} / ${{ matrix.database-image }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php-version: '8.2'
+            database-image: mariadb:11.4
+            database-healthcheck: healthcheck.sh --connect --innodb_initialized
+          - php-version: '8.3'
+            database-image: mariadb:11.4
+            database-healthcheck: healthcheck.sh --connect --innodb_initialized
+          - php-version: '8.4'
+            database-image: mariadb:11.4
+            database-healthcheck: healthcheck.sh --connect --innodb_initialized
+          - php-version: '8.4'
+            database-image: mysql:8.4
+            database-healthcheck: mysqladmin ping -h 127.0.0.1 -uroot
     services:
       mariadb:
-        image: mariadb:11.4
+        image: ${{ matrix.database-image }}
         env:
-          MARIADB_ROOT_PASSWORD: ci-root-password
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+          MARIADB_ROOT_HOST: '%'
           MARIADB_DATABASE: c0m_test
+          MYSQL_ALLOW_EMPTY_PASSWORD: '1'
+          MYSQL_ROOT_HOST: '%'
+          MYSQL_DATABASE: c0m_test
         ports:
           - 3306:3306
         options: >-
-          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-cmd="${{ matrix.database-healthcheck }}"
           --health-interval=10s
           --health-timeout=5s
           --health-retries=10
@@ -25,14 +49,14 @@ jobs:
       DB_PORT: 3306
       DB_NAME: c0m_test
       DB_USER: root
-      DB_PASSWORD: ci-root-password
+      DB_PASSWORD: ''
     steps:
       - uses: actions/checkout@v4
       - name: Set up PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
-          extensions: pdo, pdo_mysql
+          php-version: ${{ matrix.php-version }}
+          extensions: pdo, pdo_mysql, mbstring, openssl, fileinfo
           coverage: none
       - name: PHP syntax validation
         run: find app public config tests -type f -name '*.php' -print0 | xargs -0 -n1 php -l
@@ -40,5 +64,11 @@ jobs:
         run: php tests/unit.php
       - name: SMTP provider test
         run: php tests/smtp.php
-      - name: MariaDB integration tests
+      - name: Installer failure and recovery tests
+        run: php tests/installer.php
+      - name: MariaDB/MySQL integration tests
         run: php tests/integration.php
+      - name: Super Admin concurrency integration test
+        run: php tests/rbac-concurrency.php
+      - name: HTTP router integration tests
+        run: php tests/http.php
