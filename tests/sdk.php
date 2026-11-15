@@ -95,6 +95,7 @@ try {
 }
 sdkCheck($scopeErrorCaught, 'The SDK must preserve Account Center HTTP status and machine error codes.');
 
+$mismatchRevision = 0;
 $mismatchClient = new AccountCenterClient(
     'https://accounts.example.test',
     $token,
