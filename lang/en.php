@@ -279,4 +279,5 @@ return [
 'Redirect URIs' => 'Redirect URIs',
 
 'Review active devices and recent sign-ins.' => 'Review active devices and recent sign-ins.',
+'Create account' => 'Create account',
 ];
