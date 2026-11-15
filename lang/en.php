@@ -281,4 +281,5 @@ return [
 'Review active devices and recent sign-ins.' => 'Review active devices and recent sign-ins.',
 'Create account' => 'Create account',
 'Review active devices and protect your account.' => 'Review active devices and protect your account.',
+'View your subscription entitlements' => 'View your subscription entitlements.',
 ];
