@@ -60,7 +60,7 @@ Super Admins can provision, rotate and disable OAuth clients in the browser at `
 - `/login-history`
 - `/admin/users`, `/admin/settings`, `/admin/audit`
 - `/admin/applications`, `/admin/applications/save`
-- `/admin/groups`
+- `/admin/groups`, `/admin/plans`, `/admin/plans/save`
 - `/language`
 
 Browser mutations require session-bound CSRF tokens. The API bearer-token endpoints do not use browser cookies as identity.
