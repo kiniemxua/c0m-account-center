@@ -13,6 +13,7 @@ use App\Controllers\ApplicationRegistryController;
 use App\Controllers\MemberGroupController;
 use App\Controllers\AccountController;
 use App\Controllers\LanguageController;
+use App\Controllers\OAuthController;
 
 $router = new Router();
 $router->get('/.well-known/openid-configuration', [OAuthController::class, 'discovery']);
