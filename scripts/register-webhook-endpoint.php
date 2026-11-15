@@ -35,6 +35,13 @@ if ($applicationId === false || filter_var($endpoint, FILTER_VALIDATE_URL) === f
     fwrite(STDERR, "Usage: php scripts/register-webhook-endpoint.php <application-id> <https-endpoint> <comma-separated-event-types>\n");
     exit(2);
 }
+
+try {
+    App\Core\SafeWebhookHttpClient::resolvePublicTarget($endpoint);
+} catch (Throwable) {
+    fwrite(STDERR, "Webhook URL must use HTTPS on port 443 and resolve only to public IP addresses.\\n");
+    exit(2);
+}
 try {
     $pdo = new PDO(
         sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $config['host'], (int)($config['port'] ?? 3306), $config['name']),
