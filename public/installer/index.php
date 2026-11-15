@@ -18,6 +18,7 @@ if (!\App\Core\RequestSecurity::isHttps($root)) {
     exit($installerT('HTTPS is required. Configure direct HTTPS or trusted proxy addresses before installation.'));
 }
 $configPath = $root . '/config/database.php';
+$appConfigPath = $root . '/config/app.php';
 $storagePath = $root . '/storage';
 $lockPath = $storagePath . '/install.lock';
 $error = null;
@@ -37,7 +38,26 @@ if (!$done && is_file($configPath)) {
             $saved['password'],
             [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
         );
+        $check->exec("SET time_zone = '+00:00'");
         $check->query('SELECT id FROM users LIMIT 1');
+        // Regenerate config/app.php from the saved installation settings when it
+        // is missing, so the installer's own URL data is never lost after an
+        // interrupted write. An operator-created app.php is always preserved.
+        if (!is_file($appConfigPath) && isset($saved['base_url']) && is_string($saved['base_url'])
+            && filter_var(rtrim($saved['base_url'], '/'), FILTER_VALIDATE_URL)
+            && parse_url(rtrim($saved['base_url'], '/'), PHP_URL_SCHEME) === 'https') {
+            $savedProxies = $saved['trusted_proxies'] ?? [];
+            $savedProxies = is_array($savedProxies) ? array_values(array_filter($savedProxies, 'is_string')) : [];
+            $appConfig = "<?php\ndeclare(strict_types=1);\n\nreturn " . var_export([
+                'base_url' => rtrim($saved['base_url'], '/'),
+                'trusted_proxies' => $savedProxies,
+            ], true) . ";\n";
+            $tmpAppConfig = $appConfigPath . '.' . bin2hex(random_bytes(6)) . '.tmp';
+            if (file_put_contents($tmpAppConfig, $appConfig, LOCK_EX) === false || !rename($tmpAppConfig, $appConfigPath)) {
+                @unlink($tmpAppConfig);
+                throw new RuntimeException('Cannot regenerate application configuration.');
+            }
+        }
         if (!is_dir($storagePath) && !mkdir($storagePath, 0750, true) && !is_dir($storagePath)) {
             throw new RuntimeException('Cannot create storage directory.');
         }
@@ -79,10 +99,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
         $email = filter_var(strtolower(trim((string)($_POST['admin_email'] ?? ''))), FILTER_VALIDATE_EMAIL);
         $display = trim((string)($_POST['admin_name'] ?? 'Administrator'));
         $adminPass = (string)($_POST['admin_password'] ?? '');
+        $baseUrl = rtrim(trim((string)($_POST['base_url'] ?? '')), '/');
+        $proxiesRaw = trim((string)($_POST['trusted_proxies'] ?? ''));
+        $proxies = [];
+        foreach (preg_split('/\s*,\s*/', $proxiesRaw, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $proxy) {
+            if (filter_var($proxy, FILTER_VALIDATE_IP) === false) {
+                $proxies = null;
+                break;
+            }
+            $proxies[] = $proxy;
+        }
 
         if (!$email || strlen($adminPass) < 12 || $display === '' || mb_strlen($display) > 100 || $name === '' || $user === '' || $port < 1 || $port > 65535
             || !preg_match('/^[a-zA-Z0-9._:-]{1,190}$/', $host)) {
             $error = 'Enter valid database details, an email and an administrator password of at least 12 characters.';
+        } elseif ($proxies === null) {
+            $error = 'Trusted proxy addresses must be valid IP addresses.';
+        } elseif (!filter_var($baseUrl, FILTER_VALIDATE_URL) || parse_url($baseUrl, PHP_URL_SCHEME) !== 'https') {
+            $error = 'Enter a valid HTTPS application base URL.';
         } elseif (is_file($configPath) || !is_writable(dirname($configPath))) {
             $error = 'An existing configuration was found or the config directory is not writable. The installer will not overwrite it.';
             $done = is_file($configPath);
@@ -95,6 +129,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                     $pass,
                     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_EMULATE_PREPARES => false]
                 );
+                $pdo->exec("SET time_zone = '+00:00'");
 
                 $migrations = glob($root . '/database/migrations/*.sql') ?: [];
                 sort($migrations, SORT_STRING);
@@ -150,12 +185,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$done) {
                     'user' => $user,
                     'password' => $pass,
                     'app_key' => bin2hex(random_bytes(32)),
+                    'base_url' => $baseUrl,
+                    'trusted_proxies' => $proxies,
                 ], true) . ";\n";
                 $tmpConfig = $configPath . '.' . bin2hex(random_bytes(6)) . '.tmp';
                 if (file_put_contents($tmpConfig, $config, LOCK_EX) === false || !rename($tmpConfig, $configPath)) {
                     throw new RuntimeException('Could not atomically write database configuration.');
                 }
                 $tmpConfig = null;
+
+                // config/app.php holds no secrets, but an existing file may carry
+                // operator-tuned trusted proxies, so never overwrite it.
+                if (!is_file($appConfigPath)) {
+                    $appConfig = "<?php\ndeclare(strict_types=1);\n\nreturn " . var_export([
+                        'base_url' => $baseUrl,
+                        'trusted_proxies' => $proxies,
+                    ], true) . ";\n";
+                    $tmpAppConfig = $appConfigPath . '.' . bin2hex(random_bytes(6)) . '.tmp';
+                    if (file_put_contents($tmpAppConfig, $appConfig, LOCK_EX) === false || !rename($tmpAppConfig, $appConfigPath)) {
+                        throw new RuntimeException('Could not atomically write application configuration.');
+                    }
+                }
 
                 $tmpLock = $lockPath . '.' . bin2hex(random_bytes(6)) . '.tmp';
                 if (file_put_contents($tmpLock, gmdate('c'), LOCK_EX) === false || !rename($tmpLock, $lockPath)) {
@@ -207,6 +257,9 @@ if (!$done && empty($_SESSION['install_csrf'])) {
 <label><?= htmlspecialchars($installerT("Database name"), ENT_QUOTES, 'UTF-8') ?></label><input name="name" required>
 <label><?= htmlspecialchars($installerT("Database username"), ENT_QUOTES, 'UTF-8') ?></label><input name="user" required>
 <label><?= htmlspecialchars($installerT("Database password"), ENT_QUOTES, 'UTF-8') ?></label><input name="password" type="password" autocomplete="new-password">
+<hr>
+<label><?= htmlspecialchars($installerT("Application base URL (https://...)"), ENT_QUOTES, 'UTF-8') ?></label><input name="base_url" type="url" value="https://" pattern="https://.*" required>
+<label><?= htmlspecialchars($installerT("Trusted proxy IP addresses (optional, comma-separated)"), ENT_QUOTES, 'UTF-8') ?></label><input name="trusted_proxies" value="" placeholder="10.0.0.5, 10.0.0.6">
 <hr>
 <label><?= htmlspecialchars($installerT("Administrator display name"), ENT_QUOTES, 'UTF-8') ?></label><input name="admin_name" value="<?= htmlspecialchars($installerT('Administrator'), ENT_QUOTES, 'UTF-8') ?>" required>
 <label><?= htmlspecialchars($installerT("Administrator email"), ENT_QUOTES, 'UTF-8') ?></label><input name="admin_email" type="email" required>

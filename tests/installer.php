@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 define('BASE_PATH', dirname(__DIR__));
+date_default_timezone_set('UTC');
 
 function installerCheck(bool $condition, string $message): void
 {
@@ -21,6 +22,7 @@ $root = new PDO(
     $dbPassword,
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
 );
+$root->exec("SET time_zone = '+00:00'");
 
 $configPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
@@ -110,8 +112,10 @@ try {
     $invalidInstallerCookie = $request('GET', '', 'c0m_lang=../config/database');
     installerCheck($invalidInstallerCookie['status'] === 200 && str_contains($invalidInstallerCookie['body'], '<html lang="vi">'), 'An unsupported locale cookie must fall back to Vietnamese safely.');
 
-    $insecureRequest = $request('GET', '', '', false);
+    $insecureRequest = $request('GET', '', 'c0m_lang=en', false);
     installerCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'HTTPS is required'), 'Installer must reject HTTP when HTTPS is not proven.');
+    $insecureRequestVi = $request('GET', '', '', false);
+    installerCheck($insecureRequestVi['status'] === 400 && str_contains($insecureRequestVi['body'], 'Yêu cầu HTTPS'), 'The installer HTTPS rejection must fall back to the Vietnamese default locale.');
 
     $deadline = microtime(true) + 8;
     do {
@@ -140,6 +144,7 @@ try {
         'host' => '127.0.0.1', 'port' => '1', 'name' => $dbName, 'user' => $dbUser,
         'password' => 'DO_NOT_LEAK_DATABASE_PASSWORD', 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
     installerCheck($badConnection['status'] === 200 && str_contains($badConnection['body'], 'Cài đặt thất bại.'), 'Database connection failure must return a generic recoverable error.');
     installerCheck(!str_contains($badConnection['body'], 'DO_NOT_LEAK_DATABASE_PASSWORD'), 'Database credentials must not appear in installer output.');
@@ -154,6 +159,7 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $limitedUser,
         'password' => $limitedPassword, 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
     installerCheck($partial['status'] === 200 && str_contains($partial['body'], 'Cài đặt thất bại.'), 'A migration permission failure must be reported as recoverable.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'A partial migration must not mark the application installed.');
@@ -167,9 +173,13 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
         'password' => $dbPassword, 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
     installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Đã khóa cài đặt'), 'A retry with corrected DB permissions must complete installation.');
     installerCheck(is_file($configPath) && is_file($lockPath), 'Successful recovery must atomically persist config and install lock.');
+    installerCheck(is_file($appConfigPath), 'A completed installation must still provide config/app.php.');
+    $appConfigBefore = (string)file_get_contents($appConfigPath);
+    installerCheck(str_contains($appConfigBefore, "'trusted_proxies' =>"), 'A pre-existing config/app.php must not be overwritten by the installer.');
 
     // Simulate a crash after config persistence but before install-lock creation.
     $recoveredCookie = $cookieFrom($recovered) ?: $cookie;
@@ -203,6 +213,7 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
         'password' => $dbPassword, 'admin_name' => 'Existing member',
         'admin_email' => 'existing-member@example.test', 'admin_password' => 'WrongExistingPassword-999',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
     installerCheck(str_contains($wrongExistingPassword['body'], 'Cài đặt thất bại.'), 'Installer must reject an existing account when its password is wrong.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'Failed existing-account verification must not complete installation.');
@@ -214,10 +225,61 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
         'password' => $dbPassword, 'admin_name' => 'Existing member',
         'admin_email' => 'existing-member@example.test', 'admin_password' => $memberPassword,
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
     installerCheck(str_contains($rightExistingPassword['body'], 'Đã khóa cài đặt'), 'A verified existing account may complete installer recovery.');
     $memberRole->execute(['id' => $memberId]);
     installerCheck((int)$memberRole->fetchColumn() === 1, 'Only a password-verified existing account may be promoted by the installer.');
+
+    // CLI fixtures exercise the installer's file-writing paths that the HTTP
+    // fixture cannot reach without a pre-existing trusted-proxy config/app.php:
+    // creating app.php from scratch and regenerating it during lock recovery.
+    $cliFixture = static function (string $mode) use ($dbHost, $dbPort, $dbName, $dbUser, $dbPassword): int {
+        $code = <<<'PHP'
+$_SERVER['HTTPS'] = 'on';
+$_SERVER['REQUEST_METHOD'] = $argv[1];
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $_POST = ['_csrf' => 'fixture', 'host' => $argv[2], 'port' => $argv[3], 'name' => $argv[4], 'user' => $argv[5],
+        'password' => $argv[6], 'admin_name' => 'CI Admin', 'admin_email' => 'installer-ci@example.test',
+        'admin_password' => 'InstallerPassword-123', 'base_url' => 'https://accounts.example.test', 'trusted_proxies' => ''];
+}
+session_name('c0m_install');
+session_start();
+$_SESSION['install_csrf'] = 'fixture';
+require $argv[7] . '/public/installer/index.php';
+PHP;
+        $pipes = [];
+        $process = proc_open(
+            [PHP_BINARY, '-r', $code, $mode, $dbHost, (string)$dbPort, $dbName, $dbUser, $dbPassword, BASE_PATH],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes
+        );
+        if (!is_resource($process)) {
+            throw new RuntimeException('Could not start the installer CLI fixture.');
+        }
+        fclose($pipes[0]);
+        stream_get_contents($pipes[1]);
+        stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        return proc_close($process);
+    };
+
+    @unlink($configPath);
+    @unlink($appConfigPath);
+    @unlink($lockPath);
+    installerCheck($cliFixture('POST') === 0 && is_file($configPath) && is_file($appConfigPath) && is_file($lockPath), 'A fresh CLI installation must write the database config, config/app.php and the install lock.');
+    $freshAppConfig = require $appConfigPath;
+    installerCheck(($freshAppConfig['base_url'] ?? '') === 'https://accounts.example.test' && ($freshAppConfig['trusted_proxies'] ?? null) === [], 'The installer-created config/app.php must carry the submitted HTTPS base URL and no proxies.');
+    $savedDatabaseConfig = require $configPath;
+    installerCheck(($savedDatabaseConfig['base_url'] ?? '') === 'https://accounts.example.test' && ($savedDatabaseConfig['trusted_proxies'] ?? null) === [], 'config/database.php must remember the base URL and proxies for recovery.');
+
+    @unlink($appConfigPath);
+    @unlink($lockPath);
+    installerCheck($cliFixture('GET') === 0 && is_file($appConfigPath) && is_file($lockPath), 'A saved database config must regenerate a missing config/app.php during lock recovery.');
+    $regenerated = require $appConfigPath;
+    installerCheck(($regenerated['base_url'] ?? '') === 'https://accounts.example.test' && ($regenerated['trusted_proxies'] ?? null) === [], 'The regenerated config/app.php must match the saved installation settings.');
 
     echo "Installer recovery integration tests passed.\n";
 } finally {

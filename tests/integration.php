@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 define('BASE_PATH', dirname(__DIR__));
+date_default_timezone_set('UTC');
 spl_autoload_register(static function (string $class): void {
     $prefix = 'App\\';
     if (str_starts_with($class, $prefix)) {
@@ -30,6 +31,7 @@ $pdo = new PDO($dsn, getenv('DB_USER') ?: 'root', getenv('DB_PASSWORD') ?: '', [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     PDO::ATTR_EMULATE_PREPARES => false,
 ]);
+$pdo->exec("SET time_zone = '+00:00'");
 App\Core\Database::configure([
     'host' => getenv('DB_HOST') ?: '127.0.0.1',
     'port' => (int)(getenv('DB_PORT') ?: 3306),
@@ -147,6 +149,7 @@ $users = [[
 ]];
 $canManage = true;
 $canAssignRoles = true;
+$canViewAudit = true;
 ob_start();
 require BASE_PATH . '/app/Views/admin-users.php';
 $multiRoleHtml = ob_get_clean();
@@ -248,9 +251,9 @@ $registeredLanguage->execute(['id' => (int)$registered['id']]);
 assertIntegration($registeredLanguage->fetchColumn() === 'vi', 'New accounts must inherit the Vietnamese default when no locale was selected.');
 $mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
 assertIntegration(str_contains($mailLog, 'Xin chào CI Registration'), 'Verification email must use the new account language.');
-preg_match('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $matches);
-assertIntegration(isset($matches[1]), 'Registration must send a verification link through the configured mail provider.');
-$rawToken = $matches[1];
+preg_match_all('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $matches);
+assertIntegration(!empty($matches[1]), 'Registration must send a verification link through the configured mail provider.');
+$rawToken = end($matches[1]);
 $tokenQuery = $pdo->prepare('SELECT token_hash FROM auth_tokens WHERE user_id = :id AND token_type = "email_verification"');
 $tokenQuery->execute(['id' => (int)$registered['id']]);
 $storedToken = $tokenQuery->fetchColumn();
@@ -283,7 +286,8 @@ $_POST = [
 ob_start();
 $controller->register();
 $duplicateOutput = ob_get_clean();
-assertIntegration(str_contains($duplicateOutput, 'If registration can be completed'), 'Duplicate registration must use the generic response.');
+$genericMessage = App\Core\Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
+assertIntegration($genericMessage !== '' && str_contains($duplicateOutput, $genericMessage), 'Duplicate registration must use the generic response.');
 
 // Registration must honor the administrator-controlled enable/disable setting.
 $pdo->prepare("UPDATE app_settings SET setting_value = '0' WHERE setting_key = 'registration_enabled'")->execute();

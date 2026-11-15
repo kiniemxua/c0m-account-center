@@ -12,6 +12,7 @@ $pdo = new PDO(
     getenv('DB_PASSWORD') ?: '',
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
 );
+$pdo->exec("SET time_zone = '+00:00'");
 $ids = [];
 $marker = sys_get_temp_dir() . '/c0m-rbac-' . bin2hex(random_bytes(6));
 $process1 = null;

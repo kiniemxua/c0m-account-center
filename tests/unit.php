@@ -72,4 +72,25 @@ try {
     }
 }
 
+// Router dispatch must instantiate controller handlers whose action methods are
+// non-static, instead of failing with a TypeError on every route.
+final class RouterFixtureController
+{
+    public function ping(): void { echo 'pong'; }
+}
+App\Core\Localization::set('vi');
+$router = new App\Core\Router();
+$router->get('/router-fixture', [RouterFixtureController::class, 'ping']);
+$router->get('/router-missing-method', [RouterFixtureController::class, 'nonexistent']);
+ob_start();
+$router->dispatch('GET', '/router-fixture');
+$dispatched = ob_get_clean();
+check($dispatched === 'pong', 'The router must instantiate non-static controller handlers and dispatch them.');
+http_response_code(200);
+ob_start();
+$router->dispatch('GET', '/no-such-route');
+$notFound = ob_get_clean();
+check(http_response_code() === 404 && trim($notFound) !== '', 'Unknown routes must render the localized 404 page.');
+http_response_code(200);
+
 echo "Unit tests passed.\n";

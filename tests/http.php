@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 define('BASE_PATH', dirname(__DIR__));
+date_default_timezone_set('UTC');
 
 function httpCheck(bool $condition, string $message): void
 {
@@ -46,6 +47,8 @@ $testUserId = null;
 $flowEmail = null;
 $process = null;
 $pipes = [];
+$serverStdoutPath = '';
+$serverStderrPath = '';
 
 try {
     $pdo = new PDO(
@@ -54,6 +57,7 @@ try {
         $dbConfig['password'],
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
     );
+    $pdo->exec("SET time_zone = '+00:00'");
     $testEmail = 'http-' . bin2hex(random_bytes(5)) . '@example.test';
     $testPassword = 'HttpTestPassword-456';
     $pdo->prepare("INSERT INTO users (email, password_hash, display_name, status, email_verified_at) VALUES (:email, :hash, 'HTTP test member', 'active', NOW())")
@@ -74,7 +78,18 @@ try {
     $port = (int)substr(strrchr($address, ':'), 1);
 
     $command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public', BASE_PATH . '/public/index.php'];
-    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    $serverStdoutPath = sys_get_temp_dir() . '/c0m-http-test-server-stdout.log';
+    $serverStderrPath = sys_get_temp_dir() . '/c0m-http-test-server-stderr.log';
+    // The built-in server logs every accepted connection to stderr. The test
+    // never reads the child's pipes while it runs, and on Windows proc_open
+    // pipe buffers are small (~4 KB), so the server would block forever once
+    // the buffer fills. Writing both streams to files keeps the server
+    // unblocked on every platform for the whole test run.
+    $process = proc_open($command, [
+        0 => ['pipe', 'r'],
+        1 => ['file', $serverStdoutPath, 'w'],
+        2 => ['file', $serverStderrPath, 'w'],
+    ], $pipes);
     if (!is_resource($process)) {
         throw new RuntimeException('Could not start the PHP HTTP test server.');
     }
@@ -444,13 +459,17 @@ try {
     if (is_resource($process)) {
         proc_terminate($process);
     }
-    foreach ([1, 2] as $index) {
-        if (isset($pipes[$index]) && is_resource($pipes[$index])) {
-            fclose($pipes[$index]);
-        }
+    if (isset($pipes[0]) && is_resource($pipes[0])) {
+        fclose($pipes[0]);
     }
     if (is_resource($process)) {
         proc_close($process);
+    }
+    if ($serverStdoutPath !== '') {
+        @unlink($serverStdoutPath);
+    }
+    if ($serverStderrPath !== '') {
+        @unlink($serverStderrPath);
     }
     @unlink($dbConfigPath);
     @unlink($appConfigPath);

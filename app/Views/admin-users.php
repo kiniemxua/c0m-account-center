@@ -8,7 +8,7 @@
 </head>
 <body><?php require __DIR__ . '/partials/language-switcher.php'; ?>
 <main class="shell">
-<nav class="nav"><a class="brand" href="/dashboard">c0m.me</a><a class="nav-link" href="/admin/settings"><?= \App\Core\t("Settings") ?></a><?php if ($canViewAudit): ?> <a class="nav-link" href="/admin/audit"><?= \App\Core\t('Audit log') ?></a><?php endif; ?></nav>
+<nav class="nav"><a class="brand" href="/dashboard">c0m.me</a><a class="nav-link" href="/admin/settings"><?= \App\Core\t("Settings") ?></a><?php if (($canViewAudit ?? false) === true): ?> <a class="nav-link" href="/admin/audit"><?= \App\Core\t('Audit log') ?></a><?php endif; ?></nav>
 <section class="hero compact">
 <span class="eyebrow"><?= \App\Core\t("ADMINISTRATION") ?></span>
 <h1><?= \App\Core\t("Members") ?></h1>
