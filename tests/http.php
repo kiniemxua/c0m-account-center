@@ -713,7 +713,7 @@ try {
         'scopes' => ['openid', 'email'],
     ]), $authCookie);
     httpCheck($confidentialCreate['status'] === 303, 'A Super Admin must create a confidential OAuth client.');
-    $confidentialRowStmt = $pdo->prepare('SELECT id, client_id, client_secret_hash FROM oauth_clients WHERE application_id = :application_id');
+    $confidentialRowStmt = $pdo->prepare('SELECT id, client_id, client_secret_hash, status FROM oauth_clients WHERE application_id = :application_id');
     $confidentialRowStmt->execute(['application_id' => $registryAppId]);
     $confidentialRow = $confidentialRowStmt->fetch();
     $initialSecretHash = (string)$confidentialRow['client_secret_hash'];
