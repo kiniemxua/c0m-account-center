@@ -281,4 +281,5 @@ return [
 'Create account' => 'Tạo tài khoản',
 'Review active devices and protect your account.' => 'Xem lại các thiết bị đang hoạt động và bảo vệ tài khoản của bạn.',
 'View your subscription entitlements' => 'Xem các quyền lợi gói dịch vụ của bạn.',
+'Current session' => 'Phiên hiện tại',
 ];
