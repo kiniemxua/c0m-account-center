@@ -28,16 +28,16 @@ The repository contains an account/authentication foundation:
 - Super Admin application registry for creating, editing, featuring and disabling catalog entries, with transactional audit events.
 - Super Admin member-group creation, membership assignment and active/disabled lifecycle with revision updates.
 - Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
-- OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
+- Versioned member APIs for profile, active groups, group memberships, effective roles/permissions and subscription entitlements, all protected by scoped OAuth bearer tokens and authorization revisions.\n- OAuth 2.0 Authorization Code + PKCE (S256) for public and confidential clients, exact redirect matching, one-time authorization codes and consent.
 - OpenID Connect discovery, RS256 ID tokens, JWKS, scoped UserInfo, nonce/state validation and authorization revision output.
 - Opaque access/refresh tokens, refresh-token rotation and replay detection, token-family revocation and RFC 7009 revocation endpoint.
 - Registered-origin CORS for browser token, revocation and UserInfo calls; public discovery/JWKS endpoints.
-- CLI migration runner and OAuth client provisioning for existing installations.
+- Super Admin browser-based OAuth client provisioning, one-time confidential secret display, secret rotation and client lifecycle controls; CLI migration runner for existing installations.
 - Member profile preferences (display name, username, language and timezone).
 - Password change with current-password verification, throttling, session revocation and email notification.
 - Application and installer requests fail closed unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS; forwarded headers from untrusted clients are ignored.
 
-**Not production-ready.** OAuth2/OIDC authorization-code SSO, scoped UserInfo and token lifecycle are now implemented and covered by HTTP integration tests, but the provider still needs an independent protocol/security review, signing-key rotation, rate limiting and a browser-based OAuth client administration/secret-rotation UI. Subscription plans, entitlements, payment processing, signed payment webhooks and transactional event delivery are not implemented yet. External applications must validate tokens and enforce authorization server-side; dashboard visibility is never an authorization boundary. Do not accept production accounts or financial activity until the remaining modules, security review and deployment gates are complete.
+**Not production-ready.** OAuth2/OIDC authorization-code SSO, scoped UserInfo and token lifecycle are now implemented and covered by HTTP integration tests, but the provider still needs an independent protocol/security review, signing-key rotation and broader rate limiting. Subscription plans, entitlements, signed payment webhook ingestion and transactional outbox delivery are implemented; production provider checkout adapters, renewal/failure/refund operations and outbound webhook SSRF hardening remain outstanding. External applications must validate tokens and enforce authorization server-side; dashboard visibility is never an authorization boundary. Do not accept production accounts or financial activity until the remaining modules, security review and deployment gates are complete.
 
 ## cPanel installation
 
