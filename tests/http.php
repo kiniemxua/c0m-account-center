@@ -555,6 +555,121 @@ try {
     httpCheck($registryRow && $registryRow['name'] === $registryName && $registryRow['status'] === 'active' && $registryRow['access_level'] === 'members' && (int)$registryRow['featured'] === 1, 'Application creation must persist the submitted registry fields.');
     $registryAppId = (int)$registryRow['id'];
 
+    // Exercise the full OAuth 2.0 Authorization Code + PKCE and OIDC flow.
+    $oauthClientId = bin2hex(random_bytes(32));
+    $oauthRedirect = 'https://oauth.example.test/callback';
+    $oauthScopes = ['openid', 'profile', 'email', 'groups', 'permissions'];
+    $pdo->prepare(
+        'INSERT INTO oauth_clients (application_id, client_id, client_secret_hash, client_type, redirect_uris, allowed_scopes, status)
+         VALUES (:app, :client, NULL, \'public\', :redirects, :scopes, \'active\')'
+    )->execute([
+        'app' => $registryAppId,
+        'client' => $oauthClientId,
+        'redirects' => json_encode([$oauthRedirect], JSON_THROW_ON_ERROR),
+        'scopes' => json_encode($oauthScopes, JSON_THROW_ON_ERROR),
+    ]);
+    $discovery = $request('GET', '/.well-known/openid-configuration');
+    httpCheck($discovery['status'] === 200 && str_contains($discovery['body'], '/oauth/token') && str_contains($discovery['body'], 'RS256'), 'OpenID discovery must publish the issuer and supported endpoints.');
+    $jwksResponse = $request('GET', '/oauth/jwks');
+    httpCheck($jwksResponse['status'] === 200 && str_contains($jwksResponse['body'], '"kty":"RSA"'), 'The JWKS endpoint must publish an RSA public key.');
+
+    $oauthVerifier = rtrim(strtr(base64_encode(random_bytes(32)), '+/', '-_'), '=') . 'A';
+    $oauthChallenge = rtrim(strtr(base64_encode(hash('sha256', $oauthVerifier, true)), '+/', '-_'), '=');
+    $oauthState = bin2hex(random_bytes(16));
+    $oauthNonce = bin2hex(random_bytes(16));
+    $authorizeQuery = http_build_query([
+        'response_type' => 'code',
+        'client_id' => $oauthClientId,
+        'redirect_uri' => $oauthRedirect,
+        'scope' => implode(' ', $oauthScopes),
+        'state' => $oauthState,
+        'nonce' => $oauthNonce,
+        'code_challenge' => $oauthChallenge,
+        'code_challenge_method' => 'S256',
+    ], '', '&', PHP_QUERY_RFC3986);
+    $authorizePage = $request('GET', '/oauth/authorize?' . $authorizeQuery, '', $authCookie);
+    httpCheck($authorizePage['status'] === 200 && str_contains($authorizePage['body'], 'Authorize application'), 'A signed-in member must see an OAuth consent screen.');
+    $oauthCsrf = '';
+    if (preg_match('/name="_csrf" value="([a-f0-9]{64})"/', $authorizePage['body'], $match)) {
+        $oauthCsrf = $match[1];
+    }
+    httpCheck($oauthCsrf !== '', 'OAuth consent must be protected by CSRF.');
+    $oauthConsent = $request('POST', '/oauth/authorize', http_build_query([
+        '_csrf' => $oauthCsrf,
+        'decision' => 'approve',
+    ]), $authCookie);
+    httpCheck($oauthConsent['status'] === 303, 'A member must be able to approve OAuth consent.');
+    $authorizationLocation = '';
+    foreach ($oauthConsent['headers'] as $header) {
+        if (stripos($header, 'Location: ' . $oauthRedirect . '?') === 0) {
+            $authorizationLocation = substr($header, strlen('Location: '));
+        }
+    }
+    $authorizationQuery = [];
+    parse_str((string)parse_url($authorizationLocation, PHP_URL_QUERY), $authorizationQuery);
+    $authorizationCode = (string)($authorizationQuery['code'] ?? '');
+    httpCheck($authorizationCode !== '' && ($authorizationQuery['state'] ?? '') === $oauthState, 'The authorization response must return a one-time code and the exact state.');
+
+    $badPkce = $request('POST', '/oauth/token', http_build_query([
+        'grant_type' => 'authorization_code',
+        'client_id' => $oauthClientId,
+        'code' => $authorizationCode,
+        'redirect_uri' => $oauthRedirect,
+        'code_verifier' => str_repeat('B', 43),
+    ]));
+    httpCheck($badPkce['status'] === 400 && str_contains($badPkce['body'], 'invalid_grant'), 'The token endpoint must reject an incorrect PKCE verifier without consuming the code.');
+    $tokenResponse = $request('POST', '/oauth/token', http_build_query([
+        'grant_type' => 'authorization_code',
+        'client_id' => $oauthClientId,
+        'code' => $authorizationCode,
+        'redirect_uri' => $oauthRedirect,
+        'code_verifier' => $oauthVerifier,
+    ]));
+    $oauthTokens = json_decode($tokenResponse['body'], true);
+    httpCheck($tokenResponse['status'] === 200 && is_array($oauthTokens)
+        && !empty($oauthTokens['access_token']) && !empty($oauthTokens['refresh_token']) && !empty($oauthTokens['id_token']),
+        'A valid PKCE authorization code must exchange for access, refresh and OIDC ID tokens.');
+    $idTokenParts = explode('.', (string)$oauthTokens['id_token']);
+    $idTokenClaims = count($idTokenParts) === 3
+        ? json_decode(base64_decode(strtr($idTokenParts[1], '-_', '+/')), true)
+        : null;
+    httpCheck(is_array($idTokenClaims) && ($idTokenClaims['sub'] ?? '') === (string)$testUserId
+        && ($idTokenClaims['aud'] ?? '') === $oauthClientId && ($idTokenClaims['nonce'] ?? '') === $oauthNonce
+        && (int)($idTokenClaims['auth_time'] ?? 0) > 0,
+        'The OIDC ID token must bind the subject, client, nonce and original authentication time.');
+    $userinfo = $request('GET', '/oauth/userinfo', '', '', true, ['Authorization: Bearer ' . $oauthTokens['access_token']]);
+    $userinfoData = json_decode($userinfo['body'], true);
+    httpCheck($userinfo['status'] === 200 && is_array($userinfoData)
+        && ($userinfoData['sub'] ?? '') === (string)$testUserId
+        && ($userinfoData['email'] ?? '') === $testEmail
+        && in_array($groupKey, $userinfoData['groups'] ?? [], true)
+        && array_key_exists('authorization_revision', $userinfoData),
+        'OIDC userinfo must return only scoped member claims and the authorization revision.');
+
+    $refreshResponse = $request('POST', '/oauth/token', http_build_query([
+        'grant_type' => 'refresh_token',
+        'client_id' => $oauthClientId,
+        'refresh_token' => $oauthTokens['refresh_token'],
+    ]));
+    $rotatedTokens = json_decode($refreshResponse['body'], true);
+    httpCheck($refreshResponse['status'] === 200 && is_array($rotatedTokens)
+        && !empty($rotatedTokens['access_token']) && !empty($rotatedTokens['refresh_token']) && !empty($rotatedTokens['id_token']),
+        'Refresh-token rotation must issue a new token pair and OIDC ID token.');
+    $refreshReplay = $request('POST', '/oauth/token', http_build_query([
+        'grant_type' => 'refresh_token',
+        'client_id' => $oauthClientId,
+        'refresh_token' => $oauthTokens['refresh_token'],
+    ]));
+    httpCheck($refreshReplay['status'] === 400, 'Reusing a rotated refresh token must be rejected.');
+    $revokedUserinfo = $request('GET', '/oauth/userinfo', '', '', true, ['Authorization: Bearer ' . $rotatedTokens['access_token']]);
+    httpCheck($revokedUserinfo['status'] === 401, 'Refresh-token reuse must revoke the compromised token family.');
+    $unknownRevoke = $request('POST', '/oauth/revoke', http_build_query([
+        'client_id' => $oauthClientId,
+        'token' => 'unknown-token',
+        'token_type_hint' => 'access_token',
+    ]));
+    httpCheck($unknownRevoke['status'] === 200, 'RFC 7009 revocation must return success for unknown tokens.');
+
     $memberDashboard = $request('GET', '/dashboard', '', $authCookie);
     httpCheck($memberDashboard['status'] === 200 && str_contains($memberDashboard['body'], $registryName) && str_contains($memberDashboard['body'], 'https://registry.example.test/app'), 'Active member applications must appear as safe links on the dashboard.');
     $invalidRegistryUrl = $request('POST', '/admin/applications/save', http_build_query([
