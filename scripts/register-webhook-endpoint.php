@@ -39,7 +39,7 @@ if ($applicationId === false || filter_var($endpoint, FILTER_VALIDATE_URL) === f
 try {
     App\Core\SafeWebhookHttpClient::resolvePublicTarget($endpoint);
 } catch (Throwable) {
-    fwrite(STDERR, "Webhook URL must use HTTPS on port 443 and resolve only to public IP addresses.\\n");
+    fwrite(STDERR, "Webhook URL must use HTTPS on port 443 and resolve only to public IP addresses.\n");
     exit(2);
 }
 try {
