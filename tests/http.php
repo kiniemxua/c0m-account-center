@@ -14,8 +14,9 @@ function httpCheck(bool $condition, string $message): void
 $dbConfigPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
 $mailConfigPath = BASE_PATH . '/config/mail.php';
+$paymentConfigPath = BASE_PATH . '/config/payments.php';
 $mailLogPath = BASE_PATH . '/storage/mail.log';
-if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath) || is_file($mailLogPath)) {
+if (is_file($dbConfigPath) || is_file($appConfigPath) || is_file($mailConfigPath) || is_file($paymentConfigPath) || is_file($mailLogPath)) {
     throw new RuntimeException('HTTP test refuses to overwrite an existing database config.');
 }
 $dbConfig = [
@@ -40,6 +41,14 @@ if (file_put_contents($mailConfigPath, "<?php return ['mode' => 'development_log
     @unlink($dbConfigPath);
     @unlink($appConfigPath);
     throw new RuntimeException('Could not create temporary development mail configuration.');
+}
+$paymentTestSecret = bin2hex(random_bytes(32));
+$paymentConfigSource = "<?php return " . var_export(['providers' => ['generic' => ['webhook_secret' => $paymentTestSecret]]], true) . ";";
+if (file_put_contents($paymentConfigPath, $paymentConfigSource, LOCK_EX) === false) {
+    @unlink($dbConfigPath);
+    @unlink($appConfigPath);
+    @unlink($mailConfigPath);
+    throw new RuntimeException('Could not create temporary payment webhook configuration.');
 }
 
 $pdo = null;
@@ -866,6 +875,7 @@ try {
     @unlink($dbConfigPath);
     @unlink($appConfigPath);
     @unlink($mailConfigPath);
+    @unlink($paymentConfigPath);
     @unlink($mailLogPath);
     if ($pdo instanceof PDO) {
         if (is_string($flowEmail)) {
