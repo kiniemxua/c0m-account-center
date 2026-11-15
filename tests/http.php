@@ -943,6 +943,38 @@ try {
         'refresh_token' => $oauthTokens['refresh_token'],
     ]));
     httpCheck($refreshReplay['status'] === 400, 'Reusing a rotated refresh token must be rejected.');
+
+    // Invalid token grants are throttled independently per client and source IP.
+    $oauthGrantIdentifier = hash('sha256', 'oauth-grant:' . $oauthClientId);
+    $oauthTestIp = inet_pton('127.0.0.1');
+    $clearGrantFailures = $pdo->prepare(
+        "DELETE FROM auth_attempts
+         WHERE action = 'oauth_grant_failure'
+           AND (identifier_hash = :identifier OR ip_address = :ip)"
+    );
+    $clearGrantFailures->bindValue(':identifier', $oauthGrantIdentifier);
+    $clearGrantFailures->bindValue(':ip', $oauthTestIp, PDO::PARAM_LOB);
+    $clearGrantFailures->execute();
+    for ($grantFailure = 0; $grantFailure < 10; $grantFailure++) {
+        $invalidGrant = $request('POST', '/oauth/token', http_build_query([
+            'grant_type' => 'refresh_token',
+            'client_id' => $oauthClientId,
+            'refresh_token' => bin2hex(random_bytes(32)),
+        ]));
+        httpCheck($invalidGrant['status'] === 400 && str_contains($invalidGrant['body'], 'invalid_grant'),
+            'Invalid refresh tokens must be rejected while the client failure budget remains.');
+    }
+    $throttledGrant = $request('POST', '/oauth/token', http_build_query([
+        'grant_type' => 'refresh_token',
+        'client_id' => $oauthClientId,
+        'refresh_token' => bin2hex(random_bytes(32)),
+    ]));
+    httpCheck($throttledGrant['status'] === 429
+        && str_contains($throttledGrant['body'], 'slow_down')
+        && in_array('Retry-After: 900', $throttledGrant['headers'], true),
+        'The token endpoint must throttle the next invalid grant and publish Retry-After.');
+    $clearGrantFailures->execute();
+
     $revokedUserinfo = $request('GET', '/oauth/userinfo', '', '', true, ['Authorization: Bearer ' . $rotatedTokens['access_token']]);
     httpCheck($revokedUserinfo['status'] === 401, 'Refresh-token reuse must revoke the compromised token family.');
     $unknownRevoke = $request('POST', '/oauth/revoke', http_build_query([
