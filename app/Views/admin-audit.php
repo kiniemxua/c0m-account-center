@@ -2,9 +2,9 @@
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?= \App\Core\t('Audit log') ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css"></head>
 <body><?php require __DIR__ . '/partials/language-switcher.php'; ?><main class="shell">
-<nav class="nav"><a class="brand" href="/dashboard">c0m.me</a><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a><a class="nav-link" href="/admin/settings"><?= \App\Core\t('Settings') ?></a></nav>
+<nav class="nav"><a class="brand" href="/dashboard">c0m.me</a><div class="admin-nav"><a class="nav-link" href="/admin/users"><?= \App\Core\t('Members') ?></a><a class="nav-link" href="/admin/settings"><?= \App\Core\t('Settings') ?></a></div></nav>
 <section class="hero compact"><span class="eyebrow"><?= \App\Core\t('ADMINISTRATION') ?></span><h1><?= \App\Core\t('Audit log') ?></h1><p><?= \App\Core\t('Review recent security and administration events.') ?></p></section>
-<section class="feature-grid" style="grid-template-columns:1fr">
+<section class="admin-list">
 <?php foreach ($events as $event): ?><article>
 <b><?= htmlspecialchars(\App\Core\t((string)$event['action']), ENT_QUOTES, 'UTF-8') ?></b>
 <p><?= \App\Core\t('Actor') ?>: <?= htmlspecialchars($event['display_name'] ?: ($event['email'] ?: \App\Core\t('System')), ENT_QUOTES, 'UTF-8') ?><br>
