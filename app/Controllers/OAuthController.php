@@ -498,6 +498,11 @@ final class OAuthController
         header('Access-Control-Max-Age: 600');
     }
 
+    public function corsForApi(): void
+    {
+        $this->corsHeaders();
+    }
+
     private function corsHeaders(): void
     {
         $origin = is_string($_SERVER['HTTP_ORIGIN'] ?? null) ? trim($_SERVER['HTTP_ORIGIN']) : '';
