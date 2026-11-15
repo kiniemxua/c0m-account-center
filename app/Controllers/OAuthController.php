@@ -218,7 +218,7 @@ final class OAuthController
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
             'subject_types_supported' => ['public'],
             'id_token_signing_alg_values_supported' => ['RS256'],
-            'scopes_supported' => ['openid', 'profile', 'email', 'groups', 'permissions'],
+            'scopes_supported' => ['openid', 'profile', 'email', 'groups', 'permissions', 'entitlements'],
             'token_endpoint_auth_methods_supported' => ['client_secret_basic', 'none'],
             'code_challenge_methods_supported' => ['S256'],
             'claims_supported' => ['sub', 'iss', 'aud', 'exp', 'iat', 'auth_time', 'nonce', 'name', 'preferred_username', 'picture', 'email', 'email_verified'],
