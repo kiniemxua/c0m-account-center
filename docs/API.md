@@ -48,7 +48,7 @@ CORS is limited to origins derived from active clients' registered HTTPS redirec
 
 The authenticated dashboard lists active `public` and `members` entries, and lists `restricted` entries only when the user belongs to an active group explicitly granted to that application. These grants control Account Center directory visibility only; external applications must authenticate users and authorize requests independently.
 
-OAuth clients are currently provisioned through the CLI script `scripts/create-oauth-client.php`. One OAuth client is allowed per application registry entry. Confidential client secrets are displayed once and only their SHA-256 hashes are stored. See [OAUTH.md](OAUTH.md).
+Super Admins can provision, rotate and disable OAuth clients in the browser at `/admin/oauth-clients`; the CLI script `scripts/create-oauth-client.php` remains available for automation and recovery. One OAuth client is allowed per application registry entry. Confidential client secrets are displayed once and only their SHA-256 hashes are stored. See [OAUTH.md](OAUTH.md).
 
 ## Current browser account routes
 
