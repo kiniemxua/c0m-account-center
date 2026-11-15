@@ -18,7 +18,7 @@ return [
 'Active devices' => 'Thiết bị đang hoạt động', 'Review devices signed in to your account. Device and browser details are informational and are not used as authentication proof.' => 'Kiểm tra các thiết bị đang đăng nhập tài khoản. Thông tin thiết bị và trình duyệt chỉ mang tính tham khảo, không dùng để xác thực.',
 'Sign out other devices' => 'Đăng xuất các thiết bị khác', 'Revoke session' => 'Thu hồi phiên đăng nhập',
 'No active sessions found.' => 'Không tìm thấy phiên đăng nhập đang hoạt động.', 'This device' => 'Thiết bị này', 'Recent successful sign-ins associated with this account.' => 'Các lần đăng nhập gần đây của tài khoản này.',
-'No login history is available yet.' => 'Chưa có lịch sử đăng nhập.', 'Members' => 'Thành viên',
+'No login history is available yet.' => 'Chưa có lịch sử đăng nhập.', 'Account status' => 'Trạng thái tài khoản', 'Members' => 'Thành viên',
 'Manage member account status and role assignments. Permissions are enforced on the server.' => 'Quản lý trạng thái tài khoản và vai trò thành viên. Quyền được kiểm tra tại máy chủ.',
 'Settings' => 'Cài đặt', 'Registration' => 'Đăng ký', 'Control whether new member accounts can be created.' => 'Kiểm soát việc cho phép tạo tài khoản thành viên mới.',
 'Allow new registrations' => 'Cho phép đăng ký mới', 'Save settings' => 'Lưu cài đặt', 'Manage members' => 'Quản lý thành viên',
