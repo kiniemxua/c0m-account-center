@@ -26,6 +26,12 @@ check(strlen($token) === 64, 'CSRF token must contain 32 random bytes encoded as
 check(App\Core\Csrf::verify($token), 'The issued CSRF token should validate.');
 check(!App\Core\Csrf::verify(str_repeat('0', 64)), 'A different CSRF token must be rejected.');
 check(!App\Core\Csrf::verify(null), 'A missing CSRF token must be rejected.');
+check(!App\Core\Csrf::verify([]), 'An array CSRF token must be rejected without a type error.');
+check(!App\Core\Csrf::verify(new stdClass()), 'An object CSRF token must be rejected without a type error.');
+$_SESSION['_csrf'] = ['malformed'];
+$recoveredToken = App\Core\Csrf::token();
+check(is_string($recoveredToken) && strlen($recoveredToken) === 64, 'A malformed stored CSRF value must be replaced with a valid token.');
+check(App\Core\Csrf::verify($recoveredToken), 'The regenerated CSRF token must validate.');
 session_destroy();
 
 // Forwarded headers from arbitrary clients must never enable Secure-cookie trust.
@@ -65,5 +71,52 @@ try {
         @unlink($configPath);
     }
 }
+
+// Router dispatch must instantiate controller handlers whose action methods are
+// non-static, instead of failing with a TypeError on every route.
+final class RouterFixtureController
+{
+    public function ping(): void { echo 'pong'; }
+}
+App\Core\Localization::set('vi');
+$router = new App\Core\Router();
+$router->get('/router-fixture', [RouterFixtureController::class, 'ping']);
+$router->get('/router-missing-method', [RouterFixtureController::class, 'nonexistent']);
+ob_start();
+$router->dispatch('GET', '/router-fixture');
+$dispatched = ob_get_clean();
+check($dispatched === 'pong', 'The router must instantiate non-static controller handlers and dispatch them.');
+http_response_code(200);
+ob_start();
+$router->dispatch('GET', '/no-such-route');
+$notFound = ob_get_clean();
+check(http_response_code() === 404 && trim($notFound) !== '', 'Unknown routes must render the localized 404 page.');
+http_response_code(200);
+
+// OAuth 2.0 helpers must enforce exact redirect URI matching and S256 PKCE.
+$verifier = str_repeat('A', 43);
+$challenge = App\Core\OAuthService::base64UrlEncode(hash('sha256', $verifier, true));
+check(App\Core\OAuthService::validVerifier($verifier), 'A valid RFC 7636 verifier must be accepted.');
+check(!App\Core\OAuthService::validVerifier(str_repeat('a', 42)), 'A short PKCE verifier must be rejected.');
+check(!App\Core\OAuthService::validVerifier(str_repeat('a', 129)), 'An overlong PKCE verifier must be rejected.');
+check(App\Core\OAuthService::base64UrlEncode(hash('sha256', $verifier, true)) === $challenge, 'PKCE S256 challenge must use unpadded base64url encoding.');
+check(App\Core\OAuthService::validRedirectUri(['https://app.example/callback'], 'https://app.example/callback'), 'A registered redirect URI must match exactly.');
+check(!App\Core\OAuthService::validRedirectUri(['https://app.example/callback'], 'https://app.example/callback/'), 'A redirect URI with a different trailing slash must be rejected.');
+check(!App\Core\OAuthService::validRedirectUri(['https://app.example/callback'], 'https://APP.example/callback'), 'Redirect URI matching must not normalize host casing.');
+$confidentialClient = ['client_type' => 'confidential', 'client_secret_hash' => hash('sha256', 'high-entropy-secret')];
+check(App\Core\OAuthService::verifyClientSecret($confidentialClient, 'high-entropy-secret'), 'A valid confidential client secret must verify.');
+check(!App\Core\OAuthService::verifyClientSecret($confidentialClient, 'wrong-secret'), 'An invalid confidential client secret must fail.');
+check(!App\Core\OAuthService::verifyClientSecret(['client_type' => 'public', 'client_secret_hash' => null], 'secret'), 'Public clients must never authenticate with a client secret.');
+
+// OIDC signing key must be RSA-2048+ and expose a matching RS256 JWKS key.
+$jwt = App\Core\OidcSigner::sign(['iss' => 'https://accounts.example.test', 'sub' => '42', 'iat' => time()]);
+$jwtParts = explode('.', $jwt);
+check(count($jwtParts) === 3, 'An OIDC signed token must have three compact JWT segments.');
+$jwtHeader = json_decode(base64_decode(strtr($jwtParts[0], '-_', '+/')), true);
+check(is_array($jwtHeader) && ($jwtHeader['alg'] ?? null) === 'RS256' && ($jwtHeader['kid'] ?? '') !== '', 'OIDC tokens must use RS256 and identify the signing key.');
+$jwks = App\Core\OidcSigner::jwks();
+check(($jwks['keys'][0]['kty'] ?? null) === 'RSA' && ($jwks['keys'][0]['alg'] ?? null) === 'RS256'
+    && ($jwks['keys'][0]['kid'] ?? null) === $jwtHeader['kid']
+    && isset($jwks['keys'][0]['n'], $jwks['keys'][0]['e']), 'The public JWKS must publish the active RSA signing key.');
 
 echo "Unit tests passed.\n";

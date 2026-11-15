@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 define('BASE_PATH', dirname(__DIR__));
+date_default_timezone_set('UTC');
 
 function installerCheck(bool $condition, string $message): void
 {
@@ -9,43 +10,56 @@ function installerCheck(bool $condition, string $message): void
         throw new RuntimeException($message);
     }
 }
-
 $dbHost = getenv('DB_HOST') ?: '127.0.0.1';
 $dbPort = (int)(getenv('DB_PORT') ?: 3306);
 $dbName = getenv('DB_NAME') ?: 'c0m_test';
 $dbUser = getenv('DB_USER') ?: 'root';
 $dbPassword = getenv('DB_PASSWORD') ?: '';
+installerCheck($dbName === 'c0m_test', 'Installer test may only run against the disposable c0m_test database.');
 $root = new PDO(
     sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4', $dbHost, $dbPort, $dbName),
     $dbUser,
     $dbPassword,
     [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
 );
+$root->exec("SET time_zone = '+00:00'");
+$tableCount = (int)$root->query(
+    'SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = ' . $root->quote($dbName)
+)->fetchColumn();
+installerCheck($tableCount === 0, 'Installer test requires an empty c0m_test database; prepare a fresh disposable schema before rerunning.');
 
 $configPath = BASE_PATH . '/config/database.php';
 $appConfigPath = BASE_PATH . '/config/app.php';
 $lockPath = BASE_PATH . '/storage/install.lock';
 installerCheck(!is_file($configPath) && !is_file($appConfigPath) && !is_file($lockPath), 'Installer test requires a clean configuration and install lock.');
-file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX);
 $limitedUser = 'c0m_installer_limited';
 $limitedPassword = 'InstallerLimitedPassword-OnlyForCI';
-$root->exec("CREATE USER IF NOT EXISTS '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
-$root->exec("GRANT SELECT, INSERT, UPDATE, CREATE, INDEX, REFERENCES ON `{$dbName}`.* TO '{$limitedUser}'@'%'");
-
-$portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
-installerCheck(is_resource($portSocket), 'Could not reserve an installer HTTP port.');
-$address = stream_socket_get_name($portSocket, false);
-$port = (int)substr(strrchr($address, ':'), 1);
-fclose($portSocket);
-
-$command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public'];
-$process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
-installerCheck(is_resource($process), 'Could not start installer HTTP server.');
-fclose($pipes[0]);
+$process = null;
+$pipes = [];
 
 try {
+    installerCheck(file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) !== false, 'Could not create trusted-proxy test configuration.');
+    $root->exec("DROP USER IF EXISTS '{$limitedUser}'@'%'");
+    $root->exec("CREATE USER '{$limitedUser}'@'%' IDENTIFIED BY '{$limitedPassword}'");
+    $root->exec("REVOKE ALL PRIVILEGES, GRANT OPTION FROM '{$limitedUser}'@'%'");
+    $root->exec("GRANT SELECT, INSERT, UPDATE, CREATE, INDEX, REFERENCES ON `{$dbName}`.* TO '{$limitedUser}'@'%'");
+
+    $portSocket = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);
+    installerCheck(is_resource($portSocket), 'Could not reserve an installer HTTP port.');
+    $address = stream_socket_get_name($portSocket, false);
+    fclose($portSocket);
+    installerCheck(is_string($address) && str_contains($address, ':'), 'Could not determine installer HTTP port.');
+    $port = (int)substr(strrchr($address, ':'), 1);
+
+    $command = [PHP_BINARY, '-S', '127.0.0.1:' . $port, '-t', BASE_PATH . '/public'];
+    $process = proc_open($command, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+    installerCheck(is_resource($process), 'Could not start installer HTTP server.');
+    if (isset($pipes[0]) && is_resource($pipes[0])) {
+        fclose($pipes[0]);
+    }
+
     $base = 'http://127.0.0.1:' . $port;
-    $request = static function (string $method, string $body = '', string $cookie = '', bool $trustedHttps = true) use ($base): array {
+    $request = static function (string $method, string $body = '', string $cookie = '', bool $trustedHttps = true, string $path = '/installer/') use ($base): array {
         $headers = ['Connection: close'];
         if ($trustedHttps) {
             $headers[] = 'X-Forwarded-Proto: https';
@@ -63,7 +77,7 @@ try {
             'ignore_errors' => true,
             'timeout' => 8,
         ]]);
-        $response = @file_get_contents($base . '/installer/', false, $context);
+        $response = @file_get_contents($base . $path, false, $context);
         $rawHeaders = $http_response_header ?? [];
         $status = 0;
         foreach ($rawHeaders as $header) {
@@ -88,8 +102,39 @@ try {
         return $request('POST', http_build_query(['_csrf' => $csrf] + $fields), $cookie);
     };
 
-    $insecureRequest = $request('GET', '', '', false);
+    // The PHP development server starts asynchronously. Wait for its first
+    // successful HTTP response before running locale assertions; otherwise
+    // fast CI runners can race the child process and receive an empty response.
+    $startupDeadline = microtime(true) + 8;
+    do {
+        $startup = $request('GET');
+        if ($startup['status'] === 200) {
+            break;
+        }
+        usleep(50000);
+    } while (microtime(true) < $startupDeadline);
+    installerCheck($startup['status'] === 200, 'Installer HTTP server must become ready before locale checks (status ' . $startup['status'] . ').');
+
+    $englishInstaller = $request('GET', '', '', true, '/installer/?lang=en');
+    installerCheck($englishInstaller['status'] === 200 && str_contains($englishInstaller['body'], '<html lang="en">'), 'Installer must render in English when the locale is explicitly selected.');
+    installerCheck(str_contains($englishInstaller['body'], 'Set up your Account Center') && str_contains($englishInstaller['body'], 'Install Account Center'), 'English installer labels must use the English catalog.');
+    $englishLocaleCookie = '';
+    foreach ($englishInstaller['headers'] as $header) {
+        if (stripos($header, 'Set-Cookie: c0m_lang=en') === 0) {
+            $englishLocaleCookie = explode(';', substr($header, strlen('Set-Cookie: ')), 2)[0];
+        }
+    }
+    installerCheck($englishLocaleCookie === 'c0m_lang=en', 'Installer language selection must persist in the locale cookie.');
+
+    $invalidInstallerLocale = $request('GET', '', '', true, '/installer/?lang=../config/database');
+    installerCheck($invalidInstallerLocale['status'] === 200 && str_contains($invalidInstallerLocale['body'], '<html lang="vi">'), 'An unsupported installer locale must fall back to Vietnamese before any catalog file is loaded.');
+    $invalidInstallerCookie = $request('GET', '', 'c0m_lang=../config/database');
+    installerCheck($invalidInstallerCookie['status'] === 200 && str_contains($invalidInstallerCookie['body'], '<html lang="vi">'), 'An unsupported locale cookie must fall back to Vietnamese safely.');
+
+    $insecureRequest = $request('GET', '', 'c0m_lang=en', false);
     installerCheck($insecureRequest['status'] === 400 && str_contains($insecureRequest['body'], 'HTTPS is required'), 'Installer must reject HTTP when HTTPS is not proven.');
+    $insecureRequestVi = $request('GET', '', '', false);
+    installerCheck($insecureRequestVi['status'] === 400 && str_contains($insecureRequestVi['body'], 'Yêu cầu HTTPS'), 'The installer HTTPS rejection must fall back to the Vietnamese default locale.');
 
     $deadline = microtime(true) + 8;
     do {
@@ -118,13 +163,14 @@ try {
         'host' => '127.0.0.1', 'port' => '1', 'name' => $dbName, 'user' => $dbUser,
         'password' => 'DO_NOT_LEAK_DATABASE_PASSWORD', 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
-    installerCheck($badConnection['status'] === 200 && str_contains($badConnection['body'], 'Installation failed.'), 'Database connection failure must return a generic recoverable error.');
+    installerCheck($badConnection['status'] === 200 && str_contains($badConnection['body'], 'Cài đặt thất bại.'), 'Database connection failure must return a generic recoverable error.');
     installerCheck(!str_contains($badConnection['body'], 'DO_NOT_LEAK_DATABASE_PASSWORD'), 'Database credentials must not appear in installer output.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'A failed database connection must not leave config or install lock behind.');
 
     $refreshed = $request('GET', '', $cookie);
-    installerCheck($refreshed['status'] === 200 && str_contains($refreshed['body'], 'Install'), 'Refreshing after a failed setup must leave the installer retryable.');
+    installerCheck($refreshed['status'] === 200 && str_contains($refreshed['body'], 'Cài đặt Trung tâm tài khoản'), 'Refreshing after a failed setup must leave the installer retryable.');
     $csrf = $csrfFrom($refreshed) ?: $csrf;
     $cookie = $cookieFrom($refreshed) ?: $cookie;
 
@@ -132,8 +178,9 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $limitedUser,
         'password' => $limitedPassword, 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
-    installerCheck($partial['status'] === 200 && str_contains($partial['body'], 'Installation failed.'), 'A migration permission failure must be reported as recoverable.');
+    installerCheck($partial['status'] === 200 && str_contains($partial['body'], 'Cài đặt thất bại.'), 'A migration permission failure must be reported as recoverable.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'A partial migration must not mark the application installed.');
 
     $tables = $root->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA = " . $root->quote($dbName))->fetchAll(PDO::FETCH_COLUMN);
@@ -145,15 +192,19 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
         'password' => $dbPassword, 'admin_name' => 'CI Admin',
         'admin_email' => 'installer-ci@example.test', 'admin_password' => 'InstallerPassword-123',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
-    installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Installation locked'), 'A retry with corrected DB permissions must complete installation.');
+    installerCheck($recovered['status'] === 200 && str_contains($recovered['body'], 'Đã khóa cài đặt'), 'A retry with corrected DB permissions must complete installation.');
     installerCheck(is_file($configPath) && is_file($lockPath), 'Successful recovery must atomically persist config and install lock.');
+    installerCheck(is_file($appConfigPath), 'A completed installation must still provide config/app.php.');
+    $appConfigBefore = (string)file_get_contents($appConfigPath);
+    installerCheck(str_contains($appConfigBefore, "'trusted_proxies' =>"), 'A pre-existing config/app.php must not be overwritten by the installer.');
 
     // Simulate a crash after config persistence but before install-lock creation.
     $recoveredCookie = $cookieFrom($recovered) ?: $cookie;
     @unlink($lockPath);
     $lockRecovery = $request('GET', '', $recoveredCookie);
-    installerCheck($lockRecovery['status'] === 200 && str_contains($lockRecovery['body'], 'Installation locked'), 'A saved database config without its lock must recover safely.');
+    installerCheck($lockRecovery['status'] === 200 && str_contains($lockRecovery['body'], 'Đã khóa cài đặt'), 'A saved database config without its lock must recover safely.');
     installerCheck(is_file($lockPath), 'Installer must recreate the missing install lock from the saved DB config.');
 
     $adminId = $root->query("SELECT id FROM users WHERE email = 'installer-ci@example.test'")->fetchColumn();
@@ -165,6 +216,7 @@ try {
     @unlink($configPath);
     @unlink($appConfigPath);
     @unlink($lockPath);
+    installerCheck(file_put_contents($appConfigPath, "<?php return ['trusted_proxies' => ['127.0.0.1']];", LOCK_EX) !== false, 'Could not restore trusted-proxy configuration for the existing-account recovery test.');
 
     // Existing accounts may only be promoted after proving possession of their password.
     $memberPassword = 'ExistingMemberPassword-456';
@@ -180,8 +232,9 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
         'password' => $dbPassword, 'admin_name' => 'Existing member',
         'admin_email' => 'existing-member@example.test', 'admin_password' => 'WrongExistingPassword-999',
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
-    installerCheck(str_contains($wrongExistingPassword['body'], 'Installation failed.'), 'Installer must reject an existing account when its password is wrong.');
+    installerCheck(str_contains($wrongExistingPassword['body'], 'Cài đặt thất bại.'), 'Installer must reject an existing account when its password is wrong.');
     installerCheck(!is_file($configPath) && !is_file($lockPath), 'Failed existing-account verification must not complete installation.');
     $memberRole = $root->prepare("SELECT COUNT(*) FROM user_roles ur JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id AND r.role_key = 'super_admin'");
     $memberRole->execute(['id' => $memberId]);
@@ -191,21 +244,77 @@ try {
         'host' => $dbHost, 'port' => (string)$dbPort, 'name' => $dbName, 'user' => $dbUser,
         'password' => $dbPassword, 'admin_name' => 'Existing member',
         'admin_email' => 'existing-member@example.test', 'admin_password' => $memberPassword,
+        'base_url' => 'https://accounts.example.test',
     ], $cookie);
-    installerCheck(str_contains($rightExistingPassword['body'], 'Installation locked'), 'A verified existing account may complete installer recovery.');
+    installerCheck(str_contains($rightExistingPassword['body'], 'Đã khóa cài đặt'), 'A verified existing account may complete installer recovery.');
     $memberRole->execute(['id' => $memberId]);
     installerCheck((int)$memberRole->fetchColumn() === 1, 'Only a password-verified existing account may be promoted by the installer.');
 
+    // CLI fixtures exercise the installer's file-writing paths that the HTTP
+    // fixture cannot reach without a pre-existing trusted-proxy config/app.php:
+    // creating app.php from scratch and regenerating it during lock recovery.
+    $cliFixture = static function (string $mode) use ($dbHost, $dbPort, $dbName, $dbUser, $dbPassword): int {
+        $code = <<<'PHP'
+$_SERVER['HTTPS'] = 'on';
+$_SERVER['REQUEST_METHOD'] = $argv[1];
+$_SERVER['REMOTE_ADDR'] = '127.0.0.1';
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $_POST = ['_csrf' => 'fixture', 'host' => $argv[2], 'port' => $argv[3], 'name' => $argv[4], 'user' => $argv[5],
+        'password' => $argv[6], 'admin_name' => 'CI Admin', 'admin_email' => 'installer-ci@example.test',
+        'admin_password' => 'InstallerPassword-123', 'base_url' => 'https://accounts.example.test', 'trusted_proxies' => ''];
+}
+session_name('c0m_install');
+session_start();
+$_SESSION['install_csrf'] = 'fixture';
+require $argv[7] . '/public/installer/index.php';
+PHP;
+        $pipes = [];
+        $process = proc_open(
+            [PHP_BINARY, '-r', $code, $mode, $dbHost, (string)$dbPort, $dbName, $dbUser, $dbPassword, BASE_PATH],
+            [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']],
+            $pipes
+        );
+        if (!is_resource($process)) {
+            throw new RuntimeException('Could not start the installer CLI fixture.');
+        }
+        fclose($pipes[0]);
+        stream_get_contents($pipes[1]);
+        stream_get_contents($pipes[2]);
+        fclose($pipes[1]);
+        fclose($pipes[2]);
+        return proc_close($process);
+    };
+
+    @unlink($configPath);
+    @unlink($appConfigPath);
+    @unlink($lockPath);
+    installerCheck($cliFixture('POST') === 0 && is_file($configPath) && is_file($appConfigPath) && is_file($lockPath), 'A fresh CLI installation must write the database config, config/app.php and the install lock.');
+    $freshAppConfig = require $appConfigPath;
+    installerCheck(($freshAppConfig['base_url'] ?? '') === 'https://accounts.example.test' && ($freshAppConfig['trusted_proxies'] ?? null) === [], 'The installer-created config/app.php must carry the submitted HTTPS base URL and no proxies.');
+    $savedDatabaseConfig = require $configPath;
+    installerCheck(($savedDatabaseConfig['base_url'] ?? '') === 'https://accounts.example.test' && ($savedDatabaseConfig['trusted_proxies'] ?? null) === [], 'config/database.php must remember the base URL and proxies for recovery.');
+
+    @unlink($appConfigPath);
+    @unlink($lockPath);
+    installerCheck($cliFixture('GET') === 0 && is_file($appConfigPath) && is_file($lockPath), 'A saved database config must regenerate a missing config/app.php during lock recovery.');
+    $regenerated = require $appConfigPath;
+    installerCheck(($regenerated['base_url'] ?? '') === 'https://accounts.example.test' && ($regenerated['trusted_proxies'] ?? null) === [], 'The regenerated config/app.php must match the saved installation settings.');
+
     echo "Installer recovery integration tests passed.\n";
 } finally {
-    proc_terminate($process);
+    if (is_resource($process)) {
+        proc_terminate($process);
+    }
     foreach ([1, 2] as $index) {
         if (isset($pipes[$index]) && is_resource($pipes[$index])) {
             fclose($pipes[$index]);
         }
     }
-    proc_close($process);
+    if (is_resource($process)) {
+        proc_close($process);
+    }
     @unlink($configPath);
+    @unlink($appConfigPath);
     @unlink($lockPath);
     try {
         $root->exec("DROP USER IF EXISTS '{$limitedUser}'@'%'");

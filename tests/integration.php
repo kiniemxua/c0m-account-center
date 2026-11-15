@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 define('BASE_PATH', dirname(__DIR__));
+date_default_timezone_set('UTC');
 spl_autoload_register(static function (string $class): void {
     $prefix = 'App\\';
     if (str_starts_with($class, $prefix)) {
@@ -30,6 +31,7 @@ $pdo = new PDO($dsn, getenv('DB_USER') ?: 'root', getenv('DB_PASSWORD') ?: '', [
     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     PDO::ATTR_EMULATE_PREPARES => false,
 ]);
+$pdo->exec("SET time_zone = '+00:00'");
 App\Core\Database::configure([
     'host' => getenv('DB_HOST') ?: '127.0.0.1',
     'port' => (int)(getenv('DB_PORT') ?: 3306),
@@ -46,15 +48,72 @@ $authMigration = file_get_contents(BASE_PATH . '/database/migrations/002_auth_fo
 assertIntegration($authMigration !== false, 'Auth migration must exist.');
 $pdo->exec($authMigration);
 $pdo->exec($authMigration); // RBAC and auth token migration must also be repeatable.
+$authorizationRevisionMigration = file_get_contents(BASE_PATH . '/database/migrations/004_authorization_revisions.sql');
+assertIntegration($authorizationRevisionMigration !== false, 'Authorization revision migration must exist.');
+$pdo->exec($authorizationRevisionMigration);
+$pdo->exec($authorizationRevisionMigration); // Revision storage and legacy backfill must be repeatable.
+$memberGroupsMigration = file_get_contents(BASE_PATH . '/database/migrations/005_member_groups.sql');
+assertIntegration($memberGroupsMigration !== false, 'Member group migration must exist.');
+$pdo->exec($memberGroupsMigration);
+$pdo->exec($memberGroupsMigration); // Group membership and app grants must be repeatable.
 $preferencesMigration = file_get_contents(BASE_PATH . '/database/migrations/003_account_preferences.sql');
 assertIntegration($preferencesMigration !== false, 'Account preferences migration must exist.');
+// Existing account choices must survive the first application of migration 003.
+$legacyEmail = 'locale-preserve-' . bin2hex(random_bytes(6)) . '@example.test';
+$legacyUser = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
+$legacyUser->execute(['email' => $legacyEmail, 'hash' => password_hash('Legacy-Locale-42!', PASSWORD_DEFAULT)]);
+$legacyUserId = (int)$pdo->lastInsertId();
+$pdo->prepare("INSERT INTO user_profiles (user_id, language) VALUES (:id, 'en')")->execute(['id' => $legacyUserId]);
+
+$orphanEmail = 'locale-backfill-' . bin2hex(random_bytes(6)) . '@example.test';
+$pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())")
+    ->execute(['email' => $orphanEmail, 'hash' => password_hash('Orphan-Locale-42!', PASSWORD_DEFAULT)]);
+$orphanUserId = (int)$pdo->lastInsertId();
+
 $pdo->exec($preferencesMigration);
+$legacyPreference = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$legacyPreference->execute(['id' => $legacyUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'en', 'The first language migration must preserve an existing English preference.');
+$legacyPreference->execute(['id' => $orphanUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'vi', 'The language migration must backfill a missing profile with the Vietnamese default.');
+$pdo->exec($preferencesMigration);
+$legacyPreference->execute(['id' => $legacyUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'en', 'Reapplying the language migration must not overwrite an existing English preference.');
+$legacyPreference->execute(['id' => $orphanUserId]);
+assertIntegration($legacyPreference->fetchColumn() === 'vi', 'Reapplying the language migration must preserve the backfilled profile.');
+$pdo->prepare('DELETE FROM user_profiles WHERE user_id IN (:legacy, :orphan)')->execute(['legacy' => $legacyUserId, 'orphan' => $orphanUserId]);
+$pdo->prepare('DELETE FROM users WHERE id IN (:legacy, :orphan)')->execute(['legacy' => $legacyUserId, 'orphan' => $orphanUserId]);
 $pdo->exec($preferencesMigration); // Preference defaults must be safe to reapply.
+$languageColumn = $pdo->query("SHOW COLUMNS FROM user_profiles LIKE 'language'")->fetch();
+assertIntegration($languageColumn && $languageColumn['Default'] === 'vi', 'New account profiles must default to Vietnamese.');
 
 $email = 'ci-' . bin2hex(random_bytes(6)) . '@example.test';
 $insert = $pdo->prepare("INSERT INTO users (email,password_hash,status,email_verified_at) VALUES (:email,:hash,'active',NOW())");
 $insert->execute(['email' => $email, 'hash' => password_hash('Correct-Horse-42!', PASSWORD_DEFAULT)]);
 $userId = (int)$pdo->lastInsertId();
+$pdo->prepare('DELETE FROM user_authorization_revisions WHERE user_id = :id')->execute(['id' => $userId]);
+$pdo->exec($authorizationRevisionMigration);
+assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === 1, 'Reapplying the revision migration must backfill a missing user revision at version 1.');
+
+// Account language is authoritative over stale session/cookie values; invalid saved values safely fall back.
+$_SESSION = ['user_id' => $userId, 'locale' => 'en'];
+$_COOKIE = ['c0m_lang' => 'en'];
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'vi', 'A signed-in account with no saved language preference must use Vietnamese, not the guest cookie.');
+$pdo->prepare('INSERT INTO user_profiles (user_id, language) VALUES (:id, \'en\')')->execute(['id' => $userId]);
+$_SESSION['locale'] = 'vi';
+$_COOKIE['c0m_lang'] = 'vi';
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'A valid English account preference must override stale Vietnamese session and cookie values.');
+$pdo->prepare('UPDATE user_profiles SET language = \'invalid\' WHERE user_id = :id')->execute(['id' => $userId]);
+$_SESSION['locale'] = 'en';
+$_COOKIE['c0m_lang'] = 'en';
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'vi', 'An invalid stored account locale must safely fall back to Vietnamese.');
+$pdo->prepare('UPDATE user_profiles SET language = \'vi\' WHERE user_id = :id')->execute(['id' => $userId]);
+$_SESSION = [];
+$_COOKIE = [];
+App\Core\Localization::set('vi');
 
 // RBAC is resolved from database grants, not from frontend visibility.
 $memberRole = $pdo->prepare("INSERT INTO user_roles (user_id, role_id) SELECT :id, id FROM roles WHERE role_key = 'member'");
@@ -81,6 +140,10 @@ $superRole->execute(['id' => $userId]);
 
 // Multiple roles must persist and render as individually selected checkboxes.
 $multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['member', 'super_admin']);
+$roleRevision = App\Core\AuthorizationRevision::current($pdo, $userId);
+assertIntegration($roleRevision === 2, 'Changing user roles must increment the authorization revision.');
+$multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['super_admin', 'member']);
+assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === $roleRevision, 'Reapplying the same role set must not increment the authorization revision.');
 $roleLookup = $pdo->prepare(
     'SELECT GROUP_CONCAT(r.role_key ORDER BY r.role_key SEPARATOR ", ")
      FROM user_roles ur INNER JOIN roles r ON r.id = ur.role_id WHERE ur.user_id = :id'
@@ -101,6 +164,7 @@ $users = [[
 ]];
 $canManage = true;
 $canAssignRoles = true;
+$canViewAudit = true;
 ob_start();
 require BASE_PATH . '/app/Views/admin-users.php';
 $multiRoleHtml = ob_get_clean();
@@ -197,10 +261,14 @@ $lookup = $pdo->prepare('SELECT id, status, email_verified_at FROM users WHERE e
 $lookup->execute(['email' => $registrationEmail]);
 $registered = $lookup->fetch();
 assertIntegration($registered && $registered['status'] === 'pending', 'Registration must create a pending account.');
+$registeredLanguage = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$registeredLanguage->execute(['id' => (int)$registered['id']]);
+assertIntegration($registeredLanguage->fetchColumn() === 'vi', 'New accounts must inherit the Vietnamese default when no locale was selected.');
 $mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
-preg_match('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $matches);
-assertIntegration(isset($matches[1]), 'Registration must send a verification link through the configured mail provider.');
-$rawToken = $matches[1];
+assertIntegration(str_contains($mailLog, 'Xin chào CI Registration'), 'Verification email must use the new account language.');
+preg_match_all('/verify-email\?token=([a-f0-9]{64})/', $mailLog, $matches);
+assertIntegration(!empty($matches[1]), 'Registration must send a verification link through the configured mail provider.');
+$rawToken = end($matches[1]);
 $tokenQuery = $pdo->prepare('SELECT token_hash FROM auth_tokens WHERE user_id = :id AND token_type = "email_verification"');
 $tokenQuery->execute(['id' => (int)$registered['id']]);
 $storedToken = $tokenQuery->fetchColumn();
@@ -233,7 +301,8 @@ $_POST = [
 ob_start();
 $controller->register();
 $duplicateOutput = ob_get_clean();
-assertIntegration(str_contains($duplicateOutput, 'If registration can be completed'), 'Duplicate registration must use the generic response.');
+$genericMessage = App\Core\Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
+assertIntegration($genericMessage !== '' && str_contains($duplicateOutput, $genericMessage), 'Duplicate registration must use the generic response.');
 
 // Registration must honor the administrator-controlled enable/disable setting.
 $pdo->prepare("UPDATE app_settings SET setting_value = '0' WHERE setting_key = 'registration_enabled'")->execute();
@@ -260,6 +329,7 @@ ob_start();
 $controller->forgotPassword();
 ob_end_clean();
 $mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
+assertIntegration(str_contains($mailLog, 'Sử dụng liên kết một lần'), 'Password reset email must use the recipient language preference.');
 preg_match_all('/reset-password\\?token=([a-f0-9]{64})/', $mailLog, $resetMatches);
 assertIntegration(!empty($resetMatches[1]), 'Password recovery must send a reset link for an active account.');
 $resetToken = end($resetMatches[1]);
@@ -273,6 +343,14 @@ $pdo->prepare(
     'INSERT INTO sessions (id, user_id, ip_address, user_agent, last_activity, expires_at)
      VALUES (:id, :user_id, NULL, "reset-test", NOW(), DATE_ADD(NOW(), INTERVAL 1 HOUR))'
 )->execute(['id' => $sessionHash, 'user_id' => (int)$registered['id']]);
+$_SESSION = [];
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'en', 'return_to' => '/login'];
+(new App\Controllers\LanguageController())->switch();
+assertIntegration(App\Core\Localization::current() === 'en', 'Guest language switch must update the current request.');
+$_SESSION = [];
+$_COOKIE['c0m_lang'] = 'en';
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Guest locale cookie must persist across a fresh session.');
 $_SESSION['user_id'] = (int)$registered['id'];
 $_POST = ['_csrf' => App\Core\Csrf::token(), 'token' => $resetToken, 'password' => 'NewStrongPassword84'];
 ob_start();
@@ -420,6 +498,29 @@ $profileCheck->execute(['id' => (int)$registered['id']]);
 $profile = $profileCheck->fetch();
 assertIntegration($profile && $profile['display_name'] === 'Updated CI Profile' && $profile['username'] === $profileUsername
     && $profile['language'] === 'en' && $profile['timezone'] === 'UTC', 'Account profile changes must persist validated preferences.');
+$pdo->exec($preferencesMigration);
+$preserved = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$preserved->execute(['id' => (int)$registered['id']]);
+assertIntegration($preserved->fetchColumn() === 'en', 'Re-running the language migration must not overwrite an existing account preference.');
+$_SESSION['user_id'] = (int)$registered['id'];
+$_SESSION['locale'] = 'vi';
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'vi', 'return_to' => '/dashboard'];
+(new App\Controllers\LanguageController())->switch();
+$switched = $pdo->prepare('SELECT language FROM user_profiles WHERE user_id = :id');
+$switched->execute(['id' => (int)$registered['id']]);
+assertIntegration($switched->fetchColumn() === 'vi', 'Authenticated language switch must persist to the account profile.');
+$_POST = ['_csrf' => App\Core\Csrf::token(), 'language' => 'en', 'return_to' => '/dashboard'];
+(new App\Controllers\LanguageController())->switch();
+$switched->execute(['id' => (int)$registered['id']]);
+assertIntegration($switched->fetchColumn() === 'en', 'Authenticated language can be switched back to English.');
+$_SESSION['locale'] = 'vi';
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Stored account language must remain authoritative over guest/session locale.');
+$_SESSION = []; // Simulate the PHP session being cleared by logout.
+App\Core\Localization::initialize();
+assertIntegration(App\Core\Localization::current() === 'en', 'Guest locale must remain available after logout.');
+$_SESSION['user_id'] = (int)$registered['id'];
+
 
 // Password change requires the current password, revokes all sessions and sends a notification.
 $_POST = [
@@ -436,6 +537,7 @@ $changedPassword = $passwordLookup->fetch();
 assertIntegration(password_verify('ChangedStrongPassword91', $changedPassword['password_hash'] ?? ''), 'Account password change must update the password hash.');
 $notificationLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
 assertIntegration(str_contains($notificationLog, 'Your c0m.me password was changed'), 'Password change must dispatch a security notification.');
+assertIntegration(str_contains($notificationLog, 'The password for your c0m.me account was changed.'), 'Security notification must use the recipient saved English preference.');
 $pdo->prepare('DELETE FROM auth_attempts WHERE action = \'password_change\' AND identifier_hash = :identifier')
     ->execute(['identifier' => hash('sha256', 'password-change:' . (int)$registered['id'])]);
 

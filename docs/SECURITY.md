@@ -38,6 +38,7 @@
 - SMTP protocol fixture, plaintext-auth rejection, credential-pair validation, STARTTLS handshake, trusted CA, hostname mismatch rejection, AUTH failure, greeting timeout and unavailable-server failure.
 - Installer HTTP failure on database connection, partial migration failure caused by restricted DB privileges, safe retry, and existing-account password-verification behavior.
 - HTTP router requests for login rendering, security headers, CSRF rejection, unauthenticated admin access denial and unknown routes.
+- Group admin authorization, membership revisioning, restricted-application grant visibility, group disable/re-enable and grant revocation over the real HTTP router.
 - Concurrent transaction test that races two Super Admin removals and verifies that one active Super Admin remains.
 - GitHub Actions matrix for PHP 8.2, 8.3 and 8.4 with MariaDB 11.4, plus MySQL 8.4 on PHP 8.4.
 
@@ -49,6 +50,8 @@
 - Installer failure injection for filesystem write/rename permission failures and recovery after an interrupted config/lock write on real cPanel filesystems.
 - Full operational audit-log review, migration version tracking and a tested backup/restore procedure.
 - Independent penetration test and production deployment review.
-- App Registry, OAuth 2.0/OIDC, PKCE, consent and token rotation.
+- OAuth 2.0/OIDC, PKCE, consent and token rotation.
+- Registry `restricted` entries require an active matching group to appear in the Account Center directory. This does not enforce authorization inside the external application until OAuth/API checks exist.
+- Authorization revisions increment for role, group membership/grant, status and email-activation changes, but no external API/token currently exposes them to clients.
 
 Do not treat this development build as production-ready. Enforce HTTPS, keep config and storage outside the public document root, restrict permissions, configure backups and complete the remaining tests before accepting real member accounts.

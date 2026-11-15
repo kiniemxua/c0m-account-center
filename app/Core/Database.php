@@ -19,6 +19,10 @@ final class Database
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
             ]);
+            // PHP-side DATETIME values are written in UTC (bootstrap pins the
+            // PHP timezone), so SQL NOW()/INTERVAL arithmetic must run in UTC
+            // as well, regardless of the server's system time zone.
+            self::$pdo->exec("SET time_zone = '+00:00'");
         } catch (PDOException $e) {
             error_log('Database connection failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             throw new RuntimeException('Database connection failed.');

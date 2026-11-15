@@ -6,10 +6,13 @@ namespace App\Controllers;
 use App\Core\AppConfig;
 use App\Core\Csrf;
 use App\Core\Database;
+use App\Core\EmailTemplates;
 use App\Core\MailService;
+use App\Core\Localization;
 use App\Core\SessionManager;
 use PDO;
 use Throwable;
+use RuntimeException;
 
 final class AuthController
 {
@@ -30,7 +33,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
 
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
@@ -40,17 +43,17 @@ final class AuthController
 
         if (!$registrationEnabled) {
             http_response_code(403);
-            $error = 'Registration is currently closed.';
+            $error = Localization::translate("Registration is currently closed.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
         if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190 || !$this->strongPassword($password)) {
-            $error = 'Use a valid email address and a password of at least 12 characters containing upper and lower case letters and a number.';
+            $error = Localization::translate("Use a valid email address and a password of at least 12 characters containing upper and lower case letters and a number.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
         if ($display === '' || mb_strlen($display) > 100) {
-            $error = 'Enter a display name of up to 100 characters.';
+            $error = Localization::translate("Enter a display name of up to 100 characters.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
@@ -59,7 +62,7 @@ final class AuthController
         if ($this->recordAuthAttempt($pdo, 'register', $email)) {
             http_response_code(429);
             header('Retry-After: 900');
-            $error = 'Too many requests. Please wait before trying again.';
+            $error = Localization::translate("Too many requests. Please wait before trying again.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
@@ -67,7 +70,7 @@ final class AuthController
         $stmt = $pdo->prepare('SELECT id FROM users WHERE email = :email LIMIT 1');
         $stmt->execute(['email' => $email]);
         if ($stmt->fetchColumn() !== false) {
-            $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+            $message = Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
             require BASE_PATH . '/app/Views/register-result.php';
             return;
         }
@@ -84,8 +87,8 @@ final class AuthController
                 'display_name' => $display,
             ]);
             $userId = (int)$pdo->lastInsertId();
-            $profile = $pdo->prepare('INSERT INTO user_profiles (user_id) VALUES (:user_id)');
-            $profile->execute(['user_id' => $userId]);
+            $profile = $pdo->prepare('INSERT INTO user_profiles (user_id, language) VALUES (:user_id, :language)');
+            $profile->execute(['user_id' => $userId, 'language' => Localization::current()]);
             $memberRole = $pdo->prepare(
                 "INSERT INTO user_roles (user_id, role_id)
                  SELECT :user_id, id FROM roles WHERE role_key = 'member'"
@@ -104,23 +107,20 @@ final class AuthController
             if ((string)$e->getCode() !== '23000') {
                 error_log('Registration failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
             }
-            $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+            $message = Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
             require BASE_PATH . '/app/Views/register-result.php';
             return;
         }
 
         try {
             $url = AppConfig::baseUrl() . '/verify-email?token=' . rawurlencode($token);
-            MailService::send(
-                $email,
-                'Verify your c0m.me account',
-                "Hello {$display},\n\nVerify your email address using this link:\n{$url}\n\nThis link expires in 24 hours. If you did not request this account, you can ignore this message."
-            );
+            $mail = EmailTemplates::verification(Localization::current(), $display, $url);
+            MailService::send($email, $mail['subject'], $mail['text']);
         } catch (Throwable $e) {
             error_log('Verification email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
         }
 
-        $message = 'If registration can be completed for this address, a verification email will be sent shortly.';
+        $message = Localization::translate("If registration can be completed for this address, a verification email will be sent shortly.");
         require BASE_PATH . '/app/Views/register-result.php';
     }
 
@@ -146,7 +146,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $token = trim((string)($_POST['token'] ?? ''));
         $verified = false;
@@ -171,6 +171,9 @@ final class AuthController
                     );
                     $activate->execute(['user_id' => (int)$row['user_id']]);
                     $verified = $activate->rowCount() === 1;
+                    if ($verified) {
+                        \App\Core\AuthorizationRevision::bump($pdo, (int)$row['user_id']);
+                    }
                 }
                 $pdo->commit();
             } catch (Throwable $e) {
@@ -187,30 +190,27 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $pdo = Database::connection();
         $limited = $this->recordAuthAttempt($pdo, 'resend_verification', $email);
         if (!$limited && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $stmt = $pdo->prepare("SELECT id, display_name FROM users WHERE email = :email AND status = 'pending' LIMIT 1");
+            $stmt = $pdo->prepare("SELECT u.id, u.display_name, p.language FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.email = :email AND u.status = 'pending' LIMIT 1");
             $stmt->execute(['email' => $email]);
             $user = $stmt->fetch();
             if ($user) {
                 try {
                     $token = $this->issueToken($pdo, (int)$user['id'], 'email_verification', 86400);
                     $url = AppConfig::baseUrl() . '/verify-email?token=' . rawurlencode($token);
-                    MailService::send(
-                        $email,
-                        'Verify your c0m.me account',
-                        "Hello " . ($user['display_name'] ?? '') . ",\n\nVerify your email address:\n{$url}\n\nThis link expires in 24 hours."
-                    );
+                    $mail = EmailTemplates::verification((string)($user['language'] ?? 'vi'), (string)($user['display_name'] ?? ''), $url);
+                    MailService::send($email, $mail['subject'], $mail['text']);
                 } catch (Throwable $e) {
                     error_log('Verification resend failed (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 }
             }
         }
-        $message = 'If this address has a pending account, a new verification email will be sent shortly.';
+        $message = Localization::translate("If this address has a pending account, a new verification email will be sent shortly.");
         require BASE_PATH . '/app/Views/register-result.php';
     }
 
@@ -224,30 +224,27 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $pdo = Database::connection();
         $limited = $this->recordAuthAttempt($pdo, 'password_reset', $email);
         if (!$limited && filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            $stmt = $pdo->prepare("SELECT id, display_name FROM users WHERE email = :email AND status = 'active' LIMIT 1");
+            $stmt = $pdo->prepare("SELECT u.id, u.display_name, p.language FROM users u INNER JOIN user_profiles p ON p.user_id = u.id WHERE u.email = :email AND u.status = 'active' LIMIT 1");
             $stmt->execute(['email' => $email]);
             $user = $stmt->fetch();
             if ($user) {
                 try {
                     $token = $this->issueToken($pdo, (int)$user['id'], 'password_reset', 3600);
                     $url = AppConfig::baseUrl() . '/reset-password?token=' . rawurlencode($token);
-                    MailService::send(
-                        $email,
-                        'Reset your c0m.me password',
-                        "Hello " . ($user['display_name'] ?? '') . ",\n\nUse this one-time link to reset your password:\n{$url}\n\nThe link expires in one hour. If you did not request this, ignore this message."
-                    );
+                    $mail = EmailTemplates::passwordReset((string)($user['language'] ?? 'vi'), (string)($user['display_name'] ?? ''), $url);
+                    MailService::send($email, $mail['subject'], $mail['text']);
                 } catch (Throwable $e) {
                     error_log('Password reset email could not be delivered (' . get_class($e) . ', code ' . $e->getCode() . ').');
                 }
             }
         }
-        $message = 'If an active account matches that address, password reset instructions will be sent shortly.';
+        $message = Localization::translate("If an active account matches that address, password reset instructions will be sent shortly.");
         require BASE_PATH . '/app/Views/password-reset-result.php';
     }
 
@@ -273,7 +270,7 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $token = trim((string)($_POST['token'] ?? ''));
         $password = (string)($_POST['password'] ?? '');
@@ -327,13 +324,13 @@ final class AuthController
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         $email = strtolower(trim((string)($_POST['email'] ?? '')));
         $validEmail = filter_var($email, FILTER_VALIDATE_EMAIL);
         $password = (string)($_POST['password'] ?? '');
         if (!$validEmail || $password === '') {
-            $error = 'The email or password is incorrect.';
+            $error = Localization::translate("The email or password is incorrect.");
             require BASE_PATH . '/app/Views/login.php';
             return;
         }
@@ -362,7 +359,7 @@ final class AuthController
         if ((int)$identityLimit->fetchColumn() >= 10 || $ipBlocked) {
             http_response_code(429);
             header('Retry-After: 900');
-            $error = 'Too many sign-in attempts. Please wait and try again.';
+            $error = Localization::translate("Too many sign-in attempts. Please wait and try again.");
             require BASE_PATH . '/app/Views/login.php';
             return;
         }
@@ -386,20 +383,23 @@ final class AuthController
 
         if (!$success) {
             usleep(250000);
-            $error = 'The email or password is incorrect.';
+            $error = Localization::translate("The email or password is incorrect.");
             require BASE_PATH . '/app/Views/login.php';
             return;
         }
 
         SessionManager::establish((int)$user['id']);
-        header('Location: /dashboard', true, 303);
+        // Preserve a validated OAuth authorization request across sign-in.
+        // The request itself is stored server-side by OAuthController; never
+        // accept an arbitrary return URL from the login form.
+        header('Location: ' . (is_array($_SESSION['oauth_pending'] ?? null) ? '/oauth/authorize' : '/dashboard'), true, 303);
     }
 
     public function logout(): void
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
-            exit('Invalid CSRF token');
+            exit(\App\Core\t('Invalid CSRF token'));
         }
         SessionManager::revokeCurrent();
         $_SESSION = [];
