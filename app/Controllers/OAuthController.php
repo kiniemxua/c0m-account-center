@@ -426,23 +426,22 @@ final class OAuthController
 
     public function preflight(): void
     {
-        $this->corsHeaders();
-        if (!isset($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'])
-            || !in_array(strtoupper((string)$_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD']), ['GET', 'POST'], true)
-            || !isset($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'])) {
-            // Authorization and Content-Type are the only supported
-            // non-simple request headers for these endpoints.
-            $requested = strtolower((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ?? ''));
-            $allowed = array_map('trim', explode(',', $requested));
-            if (array_diff($allowed, ['authorization', 'content-type']) !== []) {
+        $origin = is_string($_SERVER['HTTP_ORIGIN'] ?? null) ? trim($_SERVER['HTTP_ORIGIN']) : '';
+        $method = strtoupper((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_METHOD'] ?? ''));
+        $requestedHeaders = strtolower(trim((string)($_SERVER['HTTP_ACCESS_CONTROL_REQUEST_HEADERS'] ?? '')));
+        if ($origin === '' || !$this->originIsRegistered($origin)
+            || !in_array($method, ['GET', 'POST'], true)) {
+            http_response_code(403);
+            return;
+        }
+        if ($requestedHeaders !== '') {
+            $requested = array_values(array_filter(array_map('trim', explode(',', $requestedHeaders))));
+            if (array_diff($requested, ['authorization', 'content-type']) !== []) {
                 http_response_code(403);
                 return;
             }
         }
-        if (!empty($_SERVER['HTTP_ORIGIN']) && empty($_SERVER['HTTP_ACCESS_CONTROL_ALLOW_ORIGIN'])) {
-            http_response_code(403);
-            return;
-        }
+        $this->corsHeaders();
         http_response_code(204);
         header('Access-Control-Max-Age: 600');
     }
