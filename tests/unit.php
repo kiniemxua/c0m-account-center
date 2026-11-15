@@ -119,6 +119,42 @@ check(($jwks['keys'][0]['kty'] ?? null) === 'RSA' && ($jwks['keys'][0]['alg'] ??
     && ($jwks['keys'][0]['kid'] ?? null) === $jwtHeader['kid']
     && isset($jwks['keys'][0]['n'], $jwks['keys'][0]['e']), 'The public JWKS must publish the active RSA signing key.');
 
+// Previous public signing keys remain discoverable during the 24-hour overlap.
+$previousDirectory = BASE_PATH . '/storage/oauth-signing-previous';
+$previousDirectoryExisted = is_dir($previousDirectory);
+if (!$previousDirectoryExisted && !mkdir($previousDirectory, 0750, true) && !is_dir($previousDirectory)) {
+    throw new RuntimeException('Could not create the temporary previous-key test directory.');
+}
+$previousFixtureKey = openssl_pkey_new([
+    'private_key_type' => OPENSSL_KEYTYPE_RSA,
+    'private_key_bits' => 2048,
+]);
+$previousFixtureDetails = $previousFixtureKey ? openssl_pkey_get_details($previousFixtureKey) : false;
+if (!is_array($previousFixtureDetails) || !isset($previousFixtureDetails['key'])) {
+    throw new RuntimeException('Could not generate the previous-key test fixture.');
+}
+$previousFixtureKid = substr(hash('sha256', $previousFixtureDetails['key']), 0, 24);
+$previousFixturePath = $previousDirectory . '/' . $previousFixtureKid . '.pem';
+try {
+    check(!file_exists($previousFixturePath), 'The temporary previous-key fixture path must be unique.');
+    check(file_put_contents($previousFixturePath, $previousFixtureDetails['key'], LOCK_EX) !== false,
+        'The previous public-key fixture must be persisted.');
+    touch($previousFixturePath, time());
+    $jwksWithPrevious = App\Core\OidcSigner::jwks();
+    $previousKeyIds = array_column($jwksWithPrevious['keys'], 'kid');
+    check(in_array($previousFixtureKid, $previousKeyIds, true),
+        'JWKS must publish a valid previous public key during the overlap window.');
+
+    touch($previousFixturePath, time() - 86401);
+    $jwksAfterOverlap = App\Core\OidcSigner::jwks();
+    $expiredKeyIds = array_column($jwksAfterOverlap['keys'], 'kid');
+    check(!in_array($previousFixtureKid, $expiredKeyIds, true),
+        'JWKS must stop publishing previous public keys after the 24-hour overlap window.');
+} finally {
+    @unlink($previousFixturePath);
+    if (!$previousDirectoryExisted) @rmdir($previousDirectory);
+}
+
 $webhookSecret = bin2hex(random_bytes(32));
 $webhookBody = '{"id":"evt_test","type":"payment.succeeded"}';
 $webhookTimestamp = (string)time();

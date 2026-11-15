@@ -11,6 +11,7 @@
 - 30-minute idle timeout, 12-hour absolute expiry, account-status validation and server-side session revocation.
 - Session/device inventory, individual session revocation and sign-out-other-devices. Suspended accounts and idle/absolute expiry invalidate the server-side session.
 - Independent failed-login throttles by account identifier and source IP. Only REMOTE_ADDR is used for client IP; forwarded client-IP headers are ignored.
+- OAuth client authentication failures are throttled by client identifier and source IP. Invalid authorization-code, refresh-token and unsupported-grant attempts are additionally throttled per authenticated client (10 failures) and source IP (30 failures) in a rolling 15-minute window; blocked token requests return HTTP 429 with Retry-After.
 - Registration enable/disable is enforced server-side from the administrator setting.
 - Registration, pending-account email verification, hashed one-time verification tokens and generic duplicate-registration responses.
 - Password recovery with hashed, expiring, single-use reset tokens and revocation of all account sessions.
@@ -49,9 +50,10 @@
 - Live-provider deliverability, DNS/SPF/DKIM/DMARC and implicit-SSL interoperability are not verified by the local fixture. It uses a test-only CA and credentials, never production SMTP credentials.
 - Installer failure injection for filesystem write/rename permission failures and recovery after an interrupted config/lock write on real cPanel filesystems.
 - Full operational audit-log review, migration version tracking and a tested backup/restore procedure.
+- OIDC signing-key rotation with a 24-hour historical JWKS overlap is implemented; the rotation command and backup/recovery procedure still require operational validation.
 - Independent penetration test and production deployment review.
-- OAuth 2.0/OIDC, PKCE, consent and token rotation.
-- Registry `restricted` entries require an active matching group to appear in the Account Center directory. This does not enforce authorization inside the external application until OAuth/API checks exist.
+- Broader rate limiting and abuse monitoring across authorization, UserInfo and revocation endpoints, plus independent OAuth/OIDC protocol review.
+- The Account Center directory filters `restricted` entries by active group grants. External products must still validate Account Center bearer tokens and enforce the scopes, groups and entitlements relevant to each protected action; directory visibility is not an authorization boundary.
 - Authorization revisions increment for role, group membership/grant, status, email-activation and entitlement changes; the scoped OIDC UserInfo and versioned member APIs expose the revision for downstream cache invalidation.
 
 Do not treat this development build as production-ready. Enforce HTTPS, keep config and storage outside the public document root, restrict permissions, configure backups and complete the remaining tests before accepting real member accounts.

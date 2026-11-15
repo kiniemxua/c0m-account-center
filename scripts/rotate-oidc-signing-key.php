@@ -4,20 +4,23 @@ declare(strict_types=1);
 define('BASE_PATH', dirname(__DIR__));
 
 spl_autoload_register(static function (string $class): void {
-    $prefix = 'App\\\\';
+    $prefix = 'App\\';
     if (!str_starts_with($class, $prefix)) return;
-    $file = BASE_PATH . '/app/' . str_replace('\\\\', '/', substr($class, strlen($prefix))) . '.php';
+    $file = BASE_PATH . '/app/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
     if (is_file($file)) require $file;
 });
-
-use App\\Core\\OidcSigner;
 
 $storage = BASE_PATH . '/storage';
 if (!is_dir($storage) && !mkdir($storage, 0750, true) && !is_dir($storage)) {
     fwrite(STDERR, "OIDC signing storage is unavailable.\n");
     exit(1);
 }
-$lock = @fopen($storage . '/oauth-signing-rotation.lock', 'c');
+$lockPath = $storage . '/oauth-signing-rotation.lock';
+if (is_link($lockPath)) {
+    fwrite(STDERR, "The OIDC rotation lock path must not be a symbolic link.\\n");
+    exit(1);
+}
+$lock = @fopen($lockPath, 'c');
 if (!is_resource($lock) || !flock($lock, LOCK_EX | LOCK_NB)) {
     fwrite(STDERR, "Another OIDC signing-key rotation is already running.\n");
     exit(1);
@@ -30,8 +33,10 @@ try {
         throw new RuntimeException('The active signing-key path must not be a symbolic link.');
     }
 
-    // This also provisions the first key on a new installation.
-    $oldKid = OidcSigner::keyId();
+    if (!is_file($activePath)) {
+        throw new RuntimeException('No active signing key exists yet; allow the application to generate its first key before rotating.');
+    }
+    $oldKid = \App\Core\OidcSigner::keyId();
     $oldPem = @file_get_contents($activePath);
     if (!is_string($oldPem) || $oldPem === '') {
         throw new RuntimeException('The current signing key is unreadable.');
@@ -80,11 +85,14 @@ try {
         if (!hash_equals($oldKid, $existingKid)) {
             throw new RuntimeException('A different public key already exists for the current key ID.');
         }
+        if (!touch($previousPath, time())) {
+            throw new RuntimeException('Could not refresh the previous public-key overlap window.');
+        }
     } else {
-        self::atomicWrite($previousPath, $oldDetails['key'], 0640);
+        oidcAtomicWrite($previousPath, $oldDetails['key'], 0640);
     }
 
-    self::atomicWrite($activePath, $newPem, 0600);
+    oidcAtomicWrite($activePath, $newPem, 0600);
     fwrite(STDOUT, "OIDC signing key rotated successfully.\n");
     fwrite(STDOUT, "Previous key ID: {$oldKid}\n");
     fwrite(STDOUT, "Active key ID:   {$newKid}\n");
@@ -102,7 +110,7 @@ try {
 /**
  * Persist a file through a same-directory temporary file and atomic rename.
  */
-function atomicWrite(string $path, string $contents, int $mode): void
+function oidcAtomicWrite(string $path, string $contents, int $mode): void
 {
     $temporary = $path . '.' . bin2hex(random_bytes(8)) . '.tmp';
     try {
