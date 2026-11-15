@@ -39,7 +39,10 @@ final class SafeWebhookHttpClient
         if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             $addresses = [$host];
         } else {
-            if (filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
+            // Reject non-canonical numeric host forms (127.1, octal and hex
+            // IPv4 spellings) rather than letting a client reinterpret them.
+            if (preg_match('/\\A[0-9.x]+\\z/i', $host)
+                || filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
                 throw new RuntimeException('invalid_endpoint');
             }
             $records = @dns_get_record($host, DNS_A | DNS_AAAA);
@@ -79,9 +82,14 @@ final class SafeWebhookHttpClient
         if ($handle === false) throw new RuntimeException('curl_initialization_failed');
 
         try {
-            curl_setopt_array($handle, [
-                CURLOPT_RETURNTRANSFER => true,
+            $responseBytes = 0;
+            $configured = curl_setopt_array($handle, [
+                CURLOPT_RETURNTRANSFER => false,
                 CURLOPT_HEADER => false,
+                CURLOPT_WRITEFUNCTION => static function ($curl, string $chunk) use (&$responseBytes): int {
+                    $responseBytes += strlen($chunk);
+                    return $responseBytes > 65536 ? 0 : strlen($chunk);
+                },
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $body,
                 CURLOPT_HTTPHEADER => $headers,
@@ -96,6 +104,7 @@ final class SafeWebhookHttpClient
                 CURLOPT_NOPROXY => '*',
                 CURLOPT_RESOLVE => [$target['host'] . ':443:' . $resolveAddress],
             ]);
+            if (!$configured) throw new RuntimeException('curl_configuration_failed');
             $response = curl_exec($handle);
             if ($response === false) throw new RuntimeException('transport_error');
             return (int)curl_getinfo($handle, CURLINFO_RESPONSE_CODE);
