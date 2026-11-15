@@ -11,7 +11,7 @@ final class EntitlementService
     public static function synchronize(PDO $pdo, int $subscriptionId): int
     {
         $stmt = $pdo->prepare(
-            'SELECT s.id, s.user_id, s.status, s.current_period_start, s.current_period_end,
+            'SELECT s.id, s.user_id, s.status, s.current_period_start, s.current_period_end, s.cancel_at_period_end,
                     p.features, p.quotas
              FROM subscriptions s
              INNER JOIN subscription_plans p ON p.id = s.plan_id
@@ -22,9 +22,12 @@ final class EntitlementService
         if (!$subscription) throw new RuntimeException('subscription_not_found');
 
         $userId = (int)$subscription['user_id'];
-        $isCurrent = in_array($subscription['status'], ['active', 'trialing'], true)
-            && ($subscription['current_period_end'] === null
-                || strtotime((string)$subscription['current_period_end'] . ' UTC') > time());
+        $periodStillValid = $subscription['current_period_end'] === null
+            || strtotime((string)$subscription['current_period_end'] . ' UTC') > time();
+        $isCurrent = $periodStillValid && (
+            in_array($subscription['status'], ['active', 'trialing'], true)
+            || ($subscription['status'] === 'canceled' && (int)$subscription['cancel_at_period_end'] === 1)
+        );
         $desired = [];
         if ($isCurrent) {
             $features = json_decode((string)$subscription['features'], true);
