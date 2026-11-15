@@ -56,6 +56,8 @@ $testUserId = null;
 $registryAppId = null;
 $registryGroupId = null;
 $flowEmail = null;
+$planKey = null;
+$paymentEventId = null;
 $process = null;
 $pipes = [];
 $serverStdoutPath = '';
@@ -959,7 +961,18 @@ try {
                     ->execute(['id' => (string)$registryGroupId]);
                 $pdo->prepare('DELETE FROM member_groups WHERE id = :id')->execute(['id' => $registryGroupId]);
             }
+            $pdo->prepare('DELETE FROM subscriptions WHERE user_id = :id')->execute(['id' => $testUserId]);
+            $pdo->prepare('DELETE FROM payment_transactions WHERE user_id = :id')->execute(['id' => $testUserId]);
             $pdo->prepare('DELETE FROM users WHERE id = :id')->execute(['id' => $testUserId]);
+        }
+        if (is_string($paymentEventId)) {
+            $pdo->prepare('DELETE FROM payment_webhook_events WHERE provider = :provider AND provider_event_id = :event')
+                ->execute(['provider' => 'generic', 'event' => $paymentEventId]);
+            $pdo->prepare('DELETE FROM event_outbox WHERE event_key = :key')
+                ->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
+        }
+        if (is_string($planKey)) {
+            $pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $planKey]);
         }
     }
 }
