@@ -275,11 +275,17 @@ final class PaymentWebhookController
             if ((int)($e->errorInfo[1] ?? 0) === 1062) {
                 try {
                     $duplicate = $pdo->prepare(
-                        'SELECT 1 FROM payment_webhook_events WHERE provider = :provider AND provider_event_id = :event LIMIT 1'
+                        'SELECT payload_hash FROM payment_webhook_events
+                         WHERE provider = :provider AND provider_event_id = :event LIMIT 1'
                     );
                     $duplicate->execute(['provider' => $provider, 'event' => $eventId]);
-                    if ($duplicate->fetchColumn() !== false) {
-                        $this->respond(200, ['ok' => true, 'duplicate' => true]);
+                    $existingPayloadHash = $duplicate->fetchColumn();
+                    if (is_string($existingPayloadHash)) {
+                        if (hash_equals($existingPayloadHash, hash('sha256', $rawBody))) {
+                            $this->respond(200, ['ok' => true, 'duplicate' => true]);
+                        } else {
+                            $this->respond(409, ['ok' => false, 'error' => 'event_id_conflict']);
+                        }
                         return;
                     }
                 } catch (Throwable) {
