@@ -190,7 +190,40 @@ $pdo->commit();
 assertIntegration(($restoredSubscription['status'] ?? '') === 'active', 'A newer Unix-timestamp event must restore the active subscription.');
 $subscriptionState->execute(['id' => $subscriptionId]);
 assertIntegration($subscriptionState->fetch()['provider_event_created_at'] === '2026-02-03 12:00:00.000000', 'Unix provider timestamps must persist normalized UTC microseconds.');
-$pdo->prepare('DELETE FROM subscriptions WHERE id = :id')->execute(['id' => $subscriptionId]);
+
+// Scheduled cancellation preserves access until the paid period ends; finalization then revokes it.
+$pdo->beginTransaction();
+$scheduledCancellation = App\Core\SubscriptionService::cancel($pdo, $userId, $subscriptionId, true);
+$pdo->commit();
+assertIntegration(!empty($scheduledCancellation['cancel_at_period_end']), 'Scheduled cancellation must be recorded.');
+assertIntegration(isset(App\Core\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Scheduled cancellation must preserve entitlements through the paid period.');
+$pdo->prepare('UPDATE subscriptions SET current_period_end = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 SECOND) WHERE id = :id')
+    ->execute(['id' => $subscriptionId]);
+$pdo->beginTransaction();
+$finalizedCount = App\Core\SubscriptionService::finalizeScheduledCancellations($pdo, 10);
+$pdo->commit();
+assertIntegration($finalizedCount === 1, 'Expired scheduled cancellations must be finalized.');
+$subscriptionState->execute(['id' => $subscriptionId]);
+assertIntegration($subscriptionState->fetch()['status'] === 'canceled', 'Finalized subscriptions must transition to canceled.');
+assertIntegration(!isset(App\Core\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Finalized cancellation must revoke paid entitlements.');
+
+// Immediate cancellation revokes entitlements in the same transaction.
+$immediateEvent = array_merge($subscriptionEvent, [
+    'provider_subscription_id' => 'ci-sub-immediate-' . bin2hex(random_bytes(5)),
+    '_event_created_at' => '2026-03-01T12:00:00Z',
+    'current_period_end' => '2027-01-01T00:00:00Z',
+]);
+$pdo->beginTransaction();
+$immediateSubscription = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.activated', $immediateEvent);
+$pdo->commit();
+$immediateId = (int)$immediateSubscription['subscription_id'];
+$pdo->beginTransaction();
+$immediateCancellation = App\Core\SubscriptionService::cancel($pdo, $userId, $immediateId, false);
+$pdo->commit();
+assertIntegration(($immediateCancellation['status'] ?? '') === 'canceled', 'Immediate cancellation must transition the subscription.');
+assertIntegration(!isset(App\Core\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Immediate cancellation must revoke paid entitlements.');
+$pdo->prepare('DELETE FROM subscriptions WHERE id IN (:scheduled, :immediate)')
+    ->execute(['scheduled' => $subscriptionId, 'immediate' => $immediateId]);
 $pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $paidPlanKey]);
 
 
