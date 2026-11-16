@@ -1,34 +1,63 @@
-# AI memory
+# AI memory — verified project handoff
 
-## Project status
+## Project goal and scope
 
-This workspace contains a partially mature Account Center codebase. The core identity, session, RBAC, localization and installer safety features are present and are the primary implementation area.
+c0m.me Account Center is a lightweight central identity and authorization hub for the c0m ecosystem. Keep the scope frozen: finish and stabilize the implemented account, application, membership, API and entitlement flows. Do not expand it into a general-purpose Google Account replacement or add unrelated features.
 
-## Verified repository observations
+## Repository and runtime
 
-- The repo root contains app/, config/, database/, docs/, lang/, public/, scripts/ and tests/.
-- The feature branch is named feature/phase3-bilingual-localization, as described in the project brief.
-- The web surface is server-rendered PHP. An admin-facing application registry supports Super Admin create/update/disable workflows and the dashboard lists active public/member entries.
-- OAuth 2.0 Authorization Code + PKCE (S256), OpenID discovery, RS256 ID tokens/JWKS, scoped UserInfo, refresh rotation/replay detection, RFC 7009 revocation and registered-origin CORS are implemented on the feature branch. OAuth client provisioning is CLI-only at present.
-- The `applications` table already exists in migration 001. `apps.manage` and `groups.manage` are Super Admin permissions. Migration 005 adds member groups, user memberships and application-specific group grants; the dashboard checks restricted access server-side.
-- Migration 004 adds `user_authorization_revisions`; legacy users are backfilled to revision 1. Role-set, group membership/grant, status and email activation changes increment revisions transactionally. New users without a row resolve to revision 1 until their first change.
-- The application enforces HTTPS checks unless a trusted proxy is explicitly configured.
-- Locale handling is centralized in app/Core/Localization.php with Vietnamese as the system default.
-- The installer has atomic config and lock writes and will refuse to overwrite an existing configuration.
+- Repository: `kiniemxua/c0m-account-center`
+- Stable branch: `main`
+- Stack: server-rendered PHP 8.2+, PDO with MariaDB 10.6+/MySQL 8+, vanilla JavaScript and custom CSS.
+- Deployment target: cPanel/shared hosting; the domain document root must point to `public/`. Keep `config/` and `storage/` outside the public document root.
+- No Node.js runtime or frontend framework is required.
+- Never commit live DB, SMTP, OAuth or signing-key secrets.
 
-## Operational constraints
+## Implemented scope on main
 
-- PHP 8.3.9 and MariaDB 11.4.5 are available locally. PHP tests use `DB_HOST=127.0.0.1`, `DB_PORT=3307`, and the `c0m_test` schema. The same port also has a distinct `localhost` listener, so database reset/inspection commands must explicitly use `-h 127.0.0.1` to match PDO.
-- The installer test requires an empty `c0m_test` schema and now fails safely on non-empty schemas; it does not drop tables itself.
-- App Registry and group access/revision behavior passed HTTP tests. After migration 005 was added, all seven test groups passed again and PHP lint passed for 62 source files. Test cleanup left no `http-registry-*`, `http-group-*` or group audit fixtures in `c0m_test`. This does not constitute a production readiness review.
-- OAuth/OIDC has an initial end-to-end implementation, but needs independent protocol/security review, signing-key rotation and rate limiting. Subscription plans, entitlements, payment processing, signed webhook delivery and transactional outbox remain unfinished.
-- New repeatable migrations 006–008 add OAuth client, authorization-code, consent, access/refresh token, auth_time and token-family storage. Run `php scripts/migrate.php` on existing installations before using OAuth.
-- New CLI provisioning command: `php scripts/create-oauth-client.php <application-id> <public|confidential> <https-redirect-uri> [additional-https-redirect-uri...]`. Confidential secrets are displayed once; store them securely.
-- The GitHub Actions run for commit `25b5ac5d5e663fcf706f195d40158aebba72c64b` passed all four PHP 8.2/8.3/8.4 + MariaDB 11.4/MySQL 8.4 jobs, including end-to-end OAuth/OIDC HTTP tests. Later CORS changes are still awaiting their own CI result; do not generalize the earlier green run to later commits.
+- Installer with atomic config/lock writes, repeatable migrations and recovery after partial setup.
+- Email/password registration, pending email verification, login throttling, password reset/change and security email notifications.
+- Hardened server-side sessions, idle/absolute expiry, device/session listing and revocation.
+- Vietnamese/English localization and member profile preferences.
+- Database-backed Super Admin/Admin/Member roles, permission-checked admin routes, member management, audit events and protection against removing the final active Super Admin.
+- Application registry, member groups, memberships and application-specific restricted-directory grants.
+- Per-user authorization revisions for role, status, email activation, group and entitlement changes.
+- OAuth 2.0 Authorization Code + PKCE, OIDC discovery, RS256 ID tokens/JWKS, consent, scoped UserInfo, opaque access/refresh tokens, refresh rotation/replay detection, token-family revocation and RFC 7009 revocation.
+- Browser-based OAuth client provisioning, confidential-secret rotation and client lifecycle controls.
+- Versioned member APIs for profile, groups, memberships, permissions and entitlements, plus a lightweight PHP SDK.
+- Subscription plan management, subscription/entitlement synchronization, signed/idempotent payment webhook event processing, transactional outbox and retryable outbound application webhooks.
 
-## Recommended next steps
+## Migrations and operational commands
 
-1. Finish browser-based OAuth client management, secret rotation, signing-key rotation and OAuth rate limiting; verify the latest CORS changes on CI.
-2. Add versioned member/profile/group/permission API endpoints beyond OIDC UserInfo.
-3. Implement subscription plans, subscription lifecycle and entitlement evaluation with authorization revisions.
-4. Add payment provider abstraction, signed/idempotent payment webhooks, transactional outbox and retryable event delivery.
+- Repeatable SQL migrations are in `database/migrations/`; the current sequence is 001–012.
+- Existing installations must run `php scripts/migrate.php` before using schema additions.
+- OAuth client provisioning: `php scripts/create-oauth-client.php`.
+- Signing-key rotation: `php scripts/rotate-oidc-signing-key.php`; validate the operational backup/recovery procedure before relying on rotation in production.
+- Outbox dispatch: `php scripts/dispatch-outbox.php`; configure a controlled scheduler after deployment.
+- See `docs/INSTALLATION.md`, `docs/API.md`, `docs/OAUTH.md`, `docs/MAIL.md` and `docs/SECURITY.md` for current instructions and limitations.
+
+## Verified CI baseline
+
+- Commit `cc2a725` on `main` has a successful GitHub Actions run `43799692106`.
+- All four matrix jobs passed: PHP 8.2 + MariaDB 11.4, PHP 8.3 + MariaDB 11.4, PHP 8.4 + MariaDB 11.4, and PHP 8.4 + MySQL 8.4.
+- This verifies the automated CI suite only. It does not prove cPanel filesystem behavior, live SMTP deliverability, real payment-provider integration, backup/restore, browser E2E or production security.
+
+## Remaining production gates (not feature expansion)
+
+1. Run clean-install and upgrade/retry flows on a real staging cPanel account with the intended PHP and database versions.
+2. Verify SMTP with the actual provider, including TLS/implicit SSL, deliverability and SPF/DKIM/DMARC.
+3. Exercise browser journeys: register, verify, login/logout, reset password, session expiry/revocation, admin member/role changes and OAuth consent/token lifecycle.
+4. Validate scheduler/outbox delivery, webhook retries and the actual payment provider's checkout/renewal/failure/refund/cancellation lifecycle. Provider-specific adapters remain incomplete.
+5. Test database/filesystem backup and restore, signing-key backup/recovery and operational audit review.
+6. Complete independent OAuth/OIDC protocol and security review, plus broader abuse monitoring/rate limiting.
+7. Confirm every connected product validates tokens and enforces scopes, groups, permissions and entitlements server-side.
+
+Do not label the project production-ready based on CI alone. Do not accept real member accounts or financial activity until the applicable gates are completed.
+
+## Working rules
+
+- Keep changes small and tied to a verified defect or a production-readiness gap in existing scope.
+- Prefer read-only inspection before modifying data or deployment configuration.
+- Preserve existing work; do not reset user data or deploy to production without explicit instruction.
+- Routine commits/pushes and PRs on feature branches are authorized; merging to main and production deployment still require explicit authorization.
+- Do not revive parked work or add new product scope just to increase commit count.
