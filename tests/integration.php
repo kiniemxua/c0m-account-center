@@ -182,16 +182,29 @@ assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === $re
     'A stale provider event must not bump authorization revision.');
 assertIntegration(App\Core\EntitlementService::forUser($pdo, $userId) === $entitlementsBeforeStale,
     'A stale provider event must not revoke or change member entitlements.');
-// Equal timestamps are accepted (ordering is strictly older), and Unix timestamps normalize to UTC.
+// Equal timestamps are ambiguous and must not override an already observed provider event.
 $pdo->beginTransaction();
 $equalTimestampResult = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
     'status' => 'past_due',
     '_event_created_at' => '2026-02-02T12:00:00Z',
 ]));
 $pdo->commit();
-assertIntegration(empty($equalTimestampResult['stale_event']), 'Events with the same provider timestamp must remain eligible for processing.');
+assertIntegration(!empty($equalTimestampResult['stale_event']), 'Events with the same provider timestamp must be ignored.');
 $subscriptionState->execute(['id' => $subscriptionId]);
-assertIntegration($subscriptionState->fetch()['status'] === 'past_due', 'An equal-timestamp event must be applied.');
+assertIntegration($subscriptionState->fetch()['status'] === 'active', 'An equal-timestamp event must not alter subscription status.');
+
+$missingSubscriptionTimestampRejected = false;
+$missingTimestampEvent = $subscriptionEvent;
+unset($missingTimestampEvent['_event_created_at']);
+$pdo->beginTransaction();
+try {
+    App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', $missingTimestampEvent);
+} catch (RuntimeException $e) {
+    $missingSubscriptionTimestampRejected = $e->getMessage() === 'provider_event_timestamp_required';
+} finally {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+}
+assertIntegration($missingSubscriptionTimestampRejected, 'Provider subscription events without an event timestamp must be rejected.');
 $pdo->beginTransaction();
 $restoredSubscription = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
     '_event_created_at' => strtotime('2026-02-03T12:00:00Z'),
