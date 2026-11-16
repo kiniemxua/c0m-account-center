@@ -191,7 +191,7 @@ assertIntegration(($restoredSubscription['status'] ?? '') === 'active', 'A newer
 $subscriptionState->execute(['id' => $subscriptionId]);
 assertIntegration($subscriptionState->fetch()['provider_event_created_at'] === '2026-02-03 12:00:00.000000', 'Unix provider timestamps must persist normalized UTC microseconds.');
 
-// Scheduled cancellation preserves access until the paid period ends, then finalization revokes it.
+// Scheduled cancellation preserves access until the paid period ends; finalization then revokes it.
 $pdo->beginTransaction();
 $scheduledCancellation = App\\Core\\SubscriptionService::cancel($pdo, $userId, $subscriptionId, true);
 $pdo->commit();
