@@ -28,7 +28,7 @@ for extension in pdo_mysql mbstring openssl fileinfo; do
     fi
 done
 
-for path in config/database.php config/app.php config/mail.php storage/install.lock storage/mail.log; do
+for path in config/database.php config/app.php config/mail.php config/payments.php storage/install.lock storage/mail.log; do
     if [[ -e "$path" ]]; then
         echo "Refusing to overwrite existing runtime file: $path" >&2
         echo "Use a clean checkout/runtime configuration before running the test suite." >&2
@@ -62,6 +62,7 @@ cleanup_runtime_files() {
         config/database.php \
         config/app.php \
         config/mail.php \
+        config/payments.php \
         storage/install.lock \
         storage/mail.log
 }
@@ -70,7 +71,7 @@ trap cleanup_runtime_files EXIT
 echo "== PHP syntax validation =="
 while IFS= read -r -d '' file; do
     php -l "$file"
-done < <(find app public config tests lang -type f -name '*.php' -print0)
+done < <(find app public config scripts tests lang -type f -name '*.php' -print0)
 
 for test in \
     tests/unit.php \
