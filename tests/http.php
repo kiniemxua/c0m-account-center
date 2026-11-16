@@ -969,6 +969,59 @@ try {
     httpCheck((int)$paymentRowCount->fetchColumn() === 1,
         'All lifecycle events for one provider payment must resolve to exactly one transaction row.');
 
+    $retryPaymentId = 'pay-' . bin2hex(random_bytes(10));
+    $failedPaymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $failedPaymentEventId;
+    $failedPaymentBody = json_encode([
+        'id' => $failedPaymentEventId,
+        'type' => 'payment.failed',
+        'created_at' => gmdate('c', $paymentCreatedAt + 10),
+        'data' => [
+            'user_id' => $testUserId,
+            'payment_id' => $retryPaymentId,
+            'amount_minor' => 500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $failedPaymentTimestamp = (string)time();
+    $failedPaymentSignature = hash_hmac('sha256', $failedPaymentTimestamp . '.' . $failedPaymentBody, $paymentTestSecret);
+    $failedPayment = $request('POST', '/api/v1/webhooks/payments', $failedPaymentBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $failedPaymentTimestamp . ',v1=' . $failedPaymentSignature,
+    ]);
+    httpCheck($failedPayment['status'] === 200, 'An initial failed payment event must be recorded.');
+
+    $retrySuccessEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $retrySuccessEventId;
+    $retrySuccessBody = json_encode([
+        'id' => $retrySuccessEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 12),
+        'data' => [
+            'user_id' => $testUserId,
+            'payment_id' => $retryPaymentId,
+            'amount_minor' => 500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $retrySuccessTimestamp = (string)time();
+    $retrySuccessSignature = hash_hmac('sha256', $retrySuccessTimestamp . '.' . $retrySuccessBody, $paymentTestSecret);
+    $retrySuccess = $request('POST', '/api/v1/webhooks/payments', $retrySuccessBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $retrySuccessTimestamp . ',v1=' . $retrySuccessSignature,
+    ]);
+    httpCheck($retrySuccess['status'] === 200 && str_contains($retrySuccess['body'], '"status":"processed"'),
+        'A later successful retry must transition a failed payment to succeeded.');
+    $retryPaymentLookup = $pdo->prepare(
+        'SELECT COUNT(*), MAX(status) FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $retryPaymentLookup->execute(['provider' => 'generic', 'payment' => $retryPaymentId]);
+    $retryPaymentRow = $retryPaymentLookup->fetch(PDO::FETCH_NUM);
+    httpCheck((int)$retryPaymentRow[0] === 1 && $retryPaymentRow[1] === 'succeeded',
+        'A failed-to-succeeded retry must update the original payment transaction.');
+
     $duplicateRefund = $request('POST', '/api/v1/webhooks/payments', $paymentRefundBody, '', true, $paymentRefundHeaders);
     httpCheck($duplicateRefund['status'] === 200 && str_contains($duplicateRefund['body'], '"duplicate":true'),
         'A repeated refund event must be acknowledged without applying the transition twice.');
