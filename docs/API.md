@@ -2,7 +2,7 @@
 
 ## Current state
 
-The web surface remains server-rendered PHP for browser account and administration pages. External applications now have an OAuth 2.0 / OpenID Connect provider using Authorization Code + PKCE (S256), plus scoped OIDC UserInfo. Subscription plans, member entitlements, signed payment webhook ingestion and transactional outbox delivery are implemented. Provider-specific checkout adapters and production payment lifecycle operations remain deployment work.
+The web surface remains server-rendered PHP for browser account and administration pages. External applications now have an OAuth 2.0 / OpenID Connect provider using Authorization Code + PKCE (S256), plus scoped OIDC UserInfo. Subscription plans, member entitlements, signed payment webhook ingestion, normalized payment transaction lifecycle and transactional outbox delivery are implemented. Provider-specific checkout/recurring-billing adapters, partial refunds and reconciliation remain deployment work.
 
 See [OAUTH.md](OAUTH.md) for the complete authorization flow, provisioning commands, scopes and operational limitations.
 
