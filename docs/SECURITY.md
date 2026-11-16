@@ -41,6 +41,7 @@
 - HTTP router requests for login rendering, security headers, CSRF rejection, unauthenticated admin access denial and unknown routes.
 - Group admin authorization, membership revisioning, restricted-application grant visibility, group disable/re-enable and grant revocation over the real HTTP router.
 - Concurrent transaction test that races two Super Admin removals and verifies that one active Super Admin remains.
+- Signed payment webhook lifecycle over the real HTTP router: provider-event idempotency, one transaction row per provider payment ID, stale-event rejection, failed-to-succeeded retry, full refund transition, ownership validation and transactional outbox behavior.
 - GitHub Actions matrix for PHP 8.2, 8.3 and 8.4 with MariaDB 11.4, plus MySQL 8.4 on PHP 8.4.
 
 ## Remaining work / not independently audited
