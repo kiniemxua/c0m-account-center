@@ -60,6 +60,22 @@ If you prefer manual setup, copy config/database.example.php to config/database.
 
 Authentication sessions use strict PHP session mode, cookie-only sessions, HttpOnly and SameSite=Lax cookies. The installer uses an HttpOnly, SameSite=Strict session cookie. The Secure attribute is enabled for direct HTTPS or explicitly trusted HTTPS proxies. Server-side session records enforce a 30-minute idle timeout and a 12-hour absolute expiry. Account status and server-side revocation are checked on authenticated requests.
 
+## Scheduled operations
+
+Run the outbox dispatcher from a private cPanel cron job so connected applications receive queued events:
+
+```sh
+php /home/ACCOUNT_USER/path-to-account-center/scripts/dispatch-outbox.php
+```
+
+Run the subscription finalizer every five minutes. It ends subscriptions whose paid period has elapsed after a member scheduled cancellation:
+
+```sh
+php /home/ACCOUNT_USER/path-to-account-center/scripts/finalize-subscriptions.php
+```
+
+Use the actual absolute path on the hosting account. Both commands are CLI-only, use a database advisory lock to prevent overlapping workers, and should run under the same restricted hosting account that owns the application files. Review their output and the server error log after setup.
+
 ## Tests
 
 Run `php tests/unit.php`, `php tests/smtp.php`, `php tests/installer.php`, `php tests/integration.php`, `php tests/rbac-concurrency.php` and `php tests/http.php`. Database-backed tests require a disposable MariaDB/MySQL database and DB_HOST, DB_PORT, DB_NAME, DB_USER and DB_PASSWORD. HTTP and installer tests require PHP proc_open and bind only to localhost. The installer test creates a temporary restricted DB user and removes it after execution.
