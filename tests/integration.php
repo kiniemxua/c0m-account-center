@@ -4,9 +4,9 @@ declare(strict_types=1);
 define('BASE_PATH', dirname(__DIR__));
 date_default_timezone_set('UTC');
 spl_autoload_register(static function (string $class): void {
-    $prefix = 'App\';
+    $prefix = 'App\\';
     if (str_starts_with($class, $prefix)) {
-        $file = BASE_PATH . '/app/' . str_replace('\', '/', substr($class, strlen($prefix))) . '.php';
+        $file = BASE_PATH . '/app/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
         if (is_file($file)) {
             require $file;
         }
@@ -463,7 +463,7 @@ $controller->forgotPassword();
 ob_end_clean();
 $mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
 assertIntegration(str_contains($mailLog, 'Sử dụng liên kết một lần'), 'Password reset email must use the recipient language preference.');
-preg_match_all('/reset-password\?token=([a-f0-9]{64})/', $mailLog, $resetMatches);
+preg_match_all('/reset-password\\?token=([a-f0-9]{64})/', $mailLog, $resetMatches);
 assertIntegration(!empty($resetMatches[1]), 'Password recovery must send a reset link for an active account.');
 $resetToken = end($resetMatches[1]);
 $resetHash = hash('sha256', $resetToken);
