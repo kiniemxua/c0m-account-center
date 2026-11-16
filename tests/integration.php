@@ -85,6 +85,16 @@ $eventOrderingMigration = file_get_contents(BASE_PATH . '/database/migrations/01
 assertIntegration($eventOrderingMigration !== false, 'Subscription event ordering migration must exist.');
 if (!in_array('provider_event_created_at', array_column($pdo->query('SHOW COLUMNS FROM subscriptions')->fetchAll(), 'Field'), true)) { $pdo->exec($eventOrderingMigration); }
 
+$paymentLifecycleMigration = file_get_contents(BASE_PATH . '/database/migrations/013_payment_transaction_lifecycle.sql');
+assertIntegration($paymentLifecycleMigration !== false, 'Payment transaction lifecycle migration must exist.');
+$pdo->exec($paymentLifecycleMigration);
+$pdo->exec($paymentLifecycleMigration); // Payment transaction identity and event ordering must be repeatable.
+$paymentColumns = array_column($pdo->query('SHOW COLUMNS FROM payment_transactions')->fetchAll(), 'Field');
+assertIntegration(in_array('provider_event_created_at', $paymentColumns, true), 'Payment transactions must persist provider event ordering timestamps.');
+$paymentIndexes = $pdo->query("SHOW INDEX FROM payment_transactions WHERE Key_name = 'uq_payment_provider_payment'")->fetchAll();
+assertIntegration(count($paymentIndexes) === 2 && (int)$paymentIndexes[0]['Non_unique'] === 0,
+    'A provider payment ID must identify at most one payment transaction.');
+
 $memberGroupsMigration = file_get_contents(BASE_PATH . '/database/migrations/005_member_groups.sql');
 assertIntegration($memberGroupsMigration !== false, 'Member group migration must exist.');
 $pdo->exec($memberGroupsMigration);
