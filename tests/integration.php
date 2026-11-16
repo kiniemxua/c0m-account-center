@@ -4,9 +4,9 @@ declare(strict_types=1);
 define('BASE_PATH', dirname(__DIR__));
 date_default_timezone_set('UTC');
 spl_autoload_register(static function (string $class): void {
-    $prefix = 'App\\';
+    $prefix = 'App\';
     if (str_starts_with($class, $prefix)) {
-        $file = BASE_PATH . '/app/' . str_replace('\\', '/', substr($class, strlen($prefix))) . '.php';
+        $file = BASE_PATH . '/app/' . str_replace('\', '/', substr($class, strlen($prefix))) . '.php';
         if (is_file($file)) {
             require $file;
         }
@@ -193,19 +193,19 @@ assertIntegration($subscriptionState->fetch()['provider_event_created_at'] === '
 
 // Scheduled cancellation preserves access until the paid period ends; finalization then revokes it.
 $pdo->beginTransaction();
-$scheduledCancellation = App\\Core\\SubscriptionService::cancel($pdo, $userId, $subscriptionId, true);
+$scheduledCancellation = App\Core\SubscriptionService::cancel($pdo, $userId, $subscriptionId, true);
 $pdo->commit();
 assertIntegration(!empty($scheduledCancellation['cancel_at_period_end']), 'Scheduled cancellation must be recorded.');
-assertIntegration(isset(App\\Core\\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Scheduled cancellation must preserve entitlements through the paid period.');
+assertIntegration(isset(App\Core\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Scheduled cancellation must preserve entitlements through the paid period.');
 $pdo->prepare('UPDATE subscriptions SET current_period_end = DATE_SUB(UTC_TIMESTAMP(), INTERVAL 1 SECOND) WHERE id = :id')
     ->execute(['id' => $subscriptionId]);
 $pdo->beginTransaction();
-$finalizedCount = App\\Core\\SubscriptionService::finalizeScheduledCancellations($pdo, 10);
+$finalizedCount = App\Core\SubscriptionService::finalizeScheduledCancellations($pdo, 10);
 $pdo->commit();
 assertIntegration($finalizedCount === 1, 'Expired scheduled cancellations must be finalized.');
 $subscriptionState->execute(['id' => $subscriptionId]);
 assertIntegration($subscriptionState->fetch()['status'] === 'canceled', 'Finalized subscriptions must transition to canceled.');
-assertIntegration(!isset(App\\Core\\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Finalized cancellation must revoke paid entitlements.');
+assertIntegration(!isset(App\Core\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Finalized cancellation must revoke paid entitlements.');
 
 // Immediate cancellation revokes entitlements in the same transaction.
 $immediateEvent = array_merge($subscriptionEvent, [
@@ -214,14 +214,14 @@ $immediateEvent = array_merge($subscriptionEvent, [
     'current_period_end' => '2027-01-01T00:00:00Z',
 ]);
 $pdo->beginTransaction();
-$immediateSubscription = App\\Core\\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.activated', $immediateEvent);
+$immediateSubscription = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.activated', $immediateEvent);
 $pdo->commit();
 $immediateId = (int)$immediateSubscription['subscription_id'];
 $pdo->beginTransaction();
-$immediateCancellation = App\\Core\\SubscriptionService::cancel($pdo, $userId, $immediateId, false);
+$immediateCancellation = App\Core\SubscriptionService::cancel($pdo, $userId, $immediateId, false);
 $pdo->commit();
 assertIntegration(($immediateCancellation['status'] ?? '') === 'canceled', 'Immediate cancellation must transition the subscription.');
-assertIntegration(!isset(App\\Core\\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Immediate cancellation must revoke paid entitlements.');
+assertIntegration(!isset(App\Core\EntitlementService::forUser($pdo, $userId)['feature.premium_access']), 'Immediate cancellation must revoke paid entitlements.');
 $pdo->prepare('DELETE FROM subscriptions WHERE id IN (:scheduled, :immediate)')
     ->execute(['scheduled' => $subscriptionId, 'immediate' => $immediateId]);
 $pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $paidPlanKey]);
@@ -463,7 +463,7 @@ $controller->forgotPassword();
 ob_end_clean();
 $mailLog = file_get_contents(BASE_PATH . '/storage/mail.log') ?: '';
 assertIntegration(str_contains($mailLog, 'Sử dụng liên kết một lần'), 'Password reset email must use the recipient language preference.');
-preg_match_all('/reset-password\\?token=([a-f0-9]{64})/', $mailLog, $resetMatches);
+preg_match_all('/reset-password\?token=([a-f0-9]{64})/', $mailLog, $resetMatches);
 assertIntegration(!empty($resetMatches[1]), 'Password recovery must send a reset link for an active account.');
 $resetToken = end($resetMatches[1]);
 $resetHash = hash('sha256', $resetToken);
