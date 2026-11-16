@@ -768,6 +768,7 @@ try {
     $paymentEventBody = json_encode([
         'id' => $paymentEventId,
         'type' => 'subscription.activated',
+        'created_at' => gmdate('c', time() - 10),
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,
@@ -868,11 +869,297 @@ try {
     $outboxCount->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
     httpCheck((int)$outboxCount->fetchColumn() === 1, 'A processed payment webhook must create exactly one transactional outbox event.');
 
+    // A payment has one current transaction row; each signed provider event remains auditable.
+    $providerPaymentId = 'pay-' . bin2hex(random_bytes(10));
+    $paymentSuccessEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $paymentSuccessEventId;
+    $paymentCreatedAt = time();
+    $paymentSuccessBody = json_encode([
+        'id' => $paymentSuccessEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $paymentSuccessTimestamp = (string)time();
+    $paymentSuccessSignature = hash_hmac('sha256', $paymentSuccessTimestamp . '.' . $paymentSuccessBody, $paymentTestSecret);
+    $paymentSuccessHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentSuccessTimestamp . ',v1=' . $paymentSuccessSignature,
+    ];
+    $paymentSuccess = $request('POST', '/api/v1/webhooks/payments', $paymentSuccessBody, '', true, $paymentSuccessHeaders);
+    httpCheck($paymentSuccess['status'] === 200 && str_contains($paymentSuccess['body'], '"status":"processed"'),
+        'A signed successful payment event must be processed.');
+
+    $paymentRowLookup = $pdo->prepare(
+        'SELECT id, status, provider_event_id, provider_event_created_at
+         FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $paymentRow = $paymentRowLookup->fetch();
+    httpCheck($paymentRow && $paymentRow['status'] === 'succeeded'
+        && $paymentRow['provider_event_id'] === $paymentSuccessEventId,
+        'A successful provider payment must create one transaction with its event ordering timestamp.');
+
+    $mismatchedPaymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $mismatchedPaymentEventId;
+    $mismatchedPaymentBody = json_encode([
+        'id' => $mismatchedPaymentEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 1),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1501,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $mismatchedPaymentTimestamp = (string)time();
+    $mismatchedPaymentSignature = hash_hmac('sha256', $mismatchedPaymentTimestamp . '.' . $mismatchedPaymentBody, $paymentTestSecret);
+    $mismatchedPayment = $request('POST', '/api/v1/webhooks/payments', $mismatchedPaymentBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $mismatchedPaymentTimestamp . ',v1=' . $mismatchedPaymentSignature,
+    ]);
+    httpCheck($mismatchedPayment['status'] === 400,
+        'A provider must not reuse a payment ID with a different amount or currency.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $unchangedPaymentRow = $paymentRowLookup->fetch();
+    httpCheck($unchangedPaymentRow['status'] === 'succeeded'
+        && $unchangedPaymentRow['provider_event_id'] === $paymentSuccessEventId,
+        'Payment identity validation must leave the original payment unchanged.');
+
+    $foreignSubscriptionPaymentId = 'pay-' . bin2hex(random_bytes(10));
+    $foreignSubscriptionEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $foreignSubscriptionEventId;
+    $foreignSubscriptionBody = json_encode([
+        'id' => $foreignSubscriptionEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 1),
+        'data' => [
+            'user_id' => (int)$flowUserRow['id'],
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $foreignSubscriptionPaymentId,
+            'amount_minor' => 100,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $foreignSubscriptionTimestamp = (string)time();
+    $foreignSubscriptionSignature = hash_hmac('sha256', $foreignSubscriptionTimestamp . '.' . $foreignSubscriptionBody, $paymentTestSecret);
+    $foreignSubscription = $request('POST', '/api/v1/webhooks/payments', $foreignSubscriptionBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $foreignSubscriptionTimestamp . ',v1=' . $foreignSubscriptionSignature,
+    ]);
+    httpCheck($foreignSubscription['status'] === 400,
+        'A payment event must not attach another member’s subscription.');
+    $foreignPaymentCount = $pdo->prepare(
+        'SELECT COUNT(*) FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $foreignPaymentCount->execute(['provider' => 'generic', 'payment' => $foreignSubscriptionPaymentId]);
+    httpCheck((int)$foreignPaymentCount->fetchColumn() === 0,
+        'A rejected cross-member subscription reference must not create a payment transaction.');
+
+    $stalePaymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $stalePaymentEventId;
+    $stalePaymentBody = json_encode([
+        'id' => $stalePaymentEventId,
+        'type' => 'payment.failed',
+        'created_at' => gmdate('c', $paymentCreatedAt - 1),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $stalePaymentTimestamp = (string)time();
+    $stalePaymentSignature = hash_hmac('sha256', $stalePaymentTimestamp . '.' . $stalePaymentBody, $paymentTestSecret);
+    $stalePayment = $request('POST', '/api/v1/webhooks/payments', $stalePaymentBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $stalePaymentTimestamp . ',v1=' . $stalePaymentSignature,
+    ]);
+    httpCheck($stalePayment['status'] === 200 && str_contains($stalePayment['body'], '"status":"ignored"'),
+        'An older failed event must be ignored after a newer successful payment event.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    httpCheck($paymentRowLookup->fetch()['status'] === 'succeeded',
+        'A stale failure must never downgrade a successful payment.');
+
+    $newerBackwardEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $newerBackwardEventId;
+    $newerBackwardEventAt = $paymentCreatedAt + 1;
+    $newerBackwardBody = json_encode([
+        'id' => $newerBackwardEventId,
+        'type' => 'payment.failed',
+        'created_at' => gmdate('c', $newerBackwardEventAt),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $newerBackwardTimestamp = (string)time();
+    $newerBackwardSignature = hash_hmac('sha256', $newerBackwardTimestamp . '.' . $newerBackwardBody, $paymentTestSecret);
+    $newerBackward = $request('POST', '/api/v1/webhooks/payments', $newerBackwardBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $newerBackwardTimestamp . ',v1=' . $newerBackwardSignature,
+    ]);
+    httpCheck($newerBackward['status'] === 200 && str_contains($newerBackward['body'], '"status":"ignored"'),
+        'A newer backwards state transition must be ignored.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $watermarkedPayment = $paymentRowLookup->fetch();
+    httpCheck($watermarkedPayment['status'] === 'succeeded'
+        && $watermarkedPayment['provider_event_created_at'] === gmdate('Y-m-d H:i:s', $newerBackwardEventAt) . '.000000',
+        'An ignored newer event must still advance the provider event-time watermark.');
+
+    $outOfOrderRefundEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $outOfOrderRefundEventId;
+    $outOfOrderRefundBody = json_encode([
+        'id' => $outOfOrderRefundEventId,
+        'type' => 'payment.refunded',
+        'created_at' => gmdate('c', $paymentCreatedAt),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $outOfOrderRefundTimestamp = (string)time();
+    $outOfOrderRefundSignature = hash_hmac('sha256', $outOfOrderRefundTimestamp . '.' . $outOfOrderRefundBody, $paymentTestSecret);
+    $outOfOrderRefund = $request('POST', '/api/v1/webhooks/payments', $outOfOrderRefundBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $outOfOrderRefundTimestamp . ',v1=' . $outOfOrderRefundSignature,
+    ]);
+    httpCheck($outOfOrderRefund['status'] === 200 && str_contains($outOfOrderRefund['body'], '"status":"ignored"'),
+        'A refund older than the latest observed provider event must not be applied.');
+
+    $paymentRefundEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $paymentRefundEventId;
+    $paymentRefundBody = json_encode([
+        'id' => $paymentRefundEventId,
+        'type' => 'payment.refunded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 2),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $paymentRefundTimestamp = (string)time();
+    $paymentRefundSignature = hash_hmac('sha256', $paymentRefundTimestamp . '.' . $paymentRefundBody, $paymentTestSecret);
+    $paymentRefundHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentRefundTimestamp . ',v1=' . $paymentRefundSignature,
+    ];
+    $paymentRefund = $request('POST', '/api/v1/webhooks/payments', $paymentRefundBody, '', true, $paymentRefundHeaders);
+    httpCheck($paymentRefund['status'] === 200 && str_contains($paymentRefund['body'], '"status":"processed"'),
+        'A later full-refund event must update the existing payment transaction.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $refundedPaymentRow = $paymentRowLookup->fetch();
+    httpCheck($refundedPaymentRow && $refundedPaymentRow['status'] === 'refunded'
+        && $refundedPaymentRow['provider_event_id'] === $paymentRefundEventId,
+        'A refund must update the original payment row instead of creating a second transaction.');
+    $paymentRowCount = $pdo->prepare(
+        'SELECT COUNT(*) FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $paymentRowCount->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    httpCheck((int)$paymentRowCount->fetchColumn() === 1,
+        'All lifecycle events for one provider payment must resolve to exactly one transaction row.');
+
+    $retryPaymentId = 'pay-' . bin2hex(random_bytes(10));
+    $failedPaymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $failedPaymentEventId;
+    $failedPaymentBody = json_encode([
+        'id' => $failedPaymentEventId,
+        'type' => 'payment.failed',
+        'created_at' => gmdate('c', $paymentCreatedAt + 10),
+        'data' => [
+            'user_id' => $testUserId,
+            'payment_id' => $retryPaymentId,
+            'amount_minor' => 500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $failedPaymentTimestamp = (string)time();
+    $failedPaymentSignature = hash_hmac('sha256', $failedPaymentTimestamp . '.' . $failedPaymentBody, $paymentTestSecret);
+    $failedPayment = $request('POST', '/api/v1/webhooks/payments', $failedPaymentBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $failedPaymentTimestamp . ',v1=' . $failedPaymentSignature,
+    ]);
+    httpCheck($failedPayment['status'] === 200, 'An initial failed payment event must be recorded.');
+
+    $retrySuccessEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $retrySuccessEventId;
+    $retrySuccessBody = json_encode([
+        'id' => $retrySuccessEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 12),
+        'data' => [
+            'user_id' => $testUserId,
+            'payment_id' => $retryPaymentId,
+            'amount_minor' => 500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $retrySuccessTimestamp = (string)time();
+    $retrySuccessSignature = hash_hmac('sha256', $retrySuccessTimestamp . '.' . $retrySuccessBody, $paymentTestSecret);
+    $retrySuccess = $request('POST', '/api/v1/webhooks/payments', $retrySuccessBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $retrySuccessTimestamp . ',v1=' . $retrySuccessSignature,
+    ]);
+    httpCheck($retrySuccess['status'] === 200 && str_contains($retrySuccess['body'], '"status":"processed"'),
+        'A later successful retry must transition a failed payment to succeeded.');
+    $retryPaymentLookup = $pdo->prepare(
+        'SELECT COUNT(*), MAX(status) FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $retryPaymentLookup->execute(['provider' => 'generic', 'payment' => $retryPaymentId]);
+    $retryPaymentRow = $retryPaymentLookup->fetch(PDO::FETCH_NUM);
+    httpCheck((int)$retryPaymentRow[0] === 1 && $retryPaymentRow[1] === 'succeeded',
+        'A failed-to-succeeded retry must update the original payment transaction.');
+
+    $duplicateRefund = $request('POST', '/api/v1/webhooks/payments', $paymentRefundBody, '', true, $paymentRefundHeaders);
+    httpCheck($duplicateRefund['status'] === 200 && str_contains($duplicateRefund['body'], '"duplicate":true'),
+        'A repeated refund event must be acknowledged without applying the transition twice.');
+
+    $reusedEventBody = str_replace('"amount_minor":1500', '"amount_minor":1501', $paymentRefundBody);
+    httpCheck($reusedEventBody !== $paymentRefundBody, 'The altered duplicate fixture must differ from the original payload.');
+    $reusedEventTimestamp = (string)time();
+    $reusedEventSignature = hash_hmac('sha256', $reusedEventTimestamp . '.' . $reusedEventBody, $paymentTestSecret);
+    $reusedEvent = $request('POST', '/api/v1/webhooks/payments', $reusedEventBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $reusedEventTimestamp . ',v1=' . $reusedEventSignature,
+    ]);
+    httpCheck($reusedEvent['status'] === 409 && str_contains($reusedEvent['body'], 'event_id_conflict'),
+        'Reusing a provider event ID with a different signed payload must be rejected.');
+
+
     $scheduledEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $scheduledEventId;
     $scheduledBody = json_encode([
         'id' => $scheduledEventId,
         'type' => 'subscription.canceled',
+        'created_at' => gmdate('c', time() - 5),
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,
@@ -901,6 +1188,7 @@ try {
     $immediateBody = json_encode([
         'id' => $immediateEventId,
         'type' => 'subscription.canceled',
+        'created_at' => gmdate('c', time() - 1),
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,

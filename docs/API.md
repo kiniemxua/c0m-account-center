@@ -2,7 +2,7 @@
 
 ## Current state
 
-The web surface remains server-rendered PHP for browser account and administration pages. External applications now have an OAuth 2.0 / OpenID Connect provider using Authorization Code + PKCE (S256), plus scoped OIDC UserInfo. Subscription plans, member entitlements, signed payment webhook ingestion and transactional outbox delivery are implemented. Provider-specific checkout adapters and production payment lifecycle operations remain deployment work.
+The web surface remains server-rendered PHP for browser account and administration pages. External applications now have an OAuth 2.0 / OpenID Connect provider using Authorization Code + PKCE (S256), plus scoped OIDC UserInfo. Subscription plans, member entitlements, signed payment webhook ingestion, normalized payment transaction lifecycle and transactional outbox delivery are implemented. Provider-specific checkout/recurring-billing adapters, partial refunds and reconciliation remain deployment work.
 
 See [OAUTH.md](OAUTH.md) for the complete authorization flow, provisioning commands, scopes and operational limitations.
 
@@ -103,6 +103,29 @@ Errors use stable machine-readable codes (`invalid_token`, `insufficient_scope`)
 - Verify payment webhook signatures and idempotency before changing entitlements.
 - Write payment state and outbox events in one database transaction.
 - Never treat dashboard visibility or client-side UI state as authorization.
+
+## Payment webhook contract
+
+The payment webhook endpoint is **POST /api/v1/webhooks/payments**. Configure a provider-specific secret under **providers.<provider>.webhook_secret** in the private **config/payments.php** file (copy **config/payments.example.php** first). The request must include:
+
+- **X-C0M-Provider**: a configured provider key containing lowercase letters, digits, underscores or hyphens.
+- **X-C0M-Signature**: **t=<unix-seconds>,v1=<hex-hmac-sha256>**. The HMAC input is **<timestamp>.<raw-request-body>** and the signature timestamp must be within five minutes of receipt.
+- A JSON envelope with a unique **id**, **type**, provider event creation time in **created_at** (ISO-8601 string) or **created** (integer Unix seconds), and an object-valued **data**.
+
+Subscription lifecycle events (**subscription.activated**, **subscription.updated**, **subscription.canceled**) also require that provider event timestamp. Their **data** must include the member ID, plan key, stable provider subscription ID and current status/period fields expected by the subscription lifecycle. Older or equal-timestamp subscription events are ignored; missing timestamps are rejected.
+
+Payment lifecycle event types are **payment.succeeded**, **payment.failed** and **payment.refunded**. Their **data** must contain:
+
+- **user_id**: an existing active Account Center member.
+- **payment_id**: the stable provider payment/charge ID, reused for every event about that payment.
+- **amount_minor** and **currency**: the original transaction amount in minor units and its three-letter ISO currency code. A refund event currently represents a full refund and must report the same original amount/currency.
+- **subscription_id** (optional): when supplied, it must identify a subscription owned by the same member.
+
+Account Center stores every distinct signed delivery in **payment_webhook_events** for audit, but maintains one current **payment_transactions** row per provider/payment ID. The payment state transitions are monotonic: **pending → succeeded/failed**, **failed → succeeded** and **succeeded → refunded**. A refund without a prior successful payment is rejected. Older or equal-timestamp lifecycle events, repeated states and backwards transitions are acknowledged as ignored; they do not create outbound events. The latest observed provider timestamp is still retained for ignored newer events, preventing an older later delivery from being applied. A repeated provider event ID with the identical payload is acknowledged as a duplicate; reusing an event ID with a different payload returns HTTP 409.
+
+Every accepted state transition and its outbox event commit in one database transaction. If two distinct events race to create the same provider payment ID, the unique database constraint makes the losing request retryable (HTTP 409) rather than silently dropping it. Payment events require the provider's original event creation timestamp; do not substitute the webhook delivery time.
+
+This is the normalized webhook contract, not a hosted checkout integration. Provider-specific checkout, recurring billing, partial refunds and reconciliation still require a concrete payment-provider adapter and live-provider testing. A **payment.refunded** event records the payment state; subscription access changes must be communicated separately using the corresponding subscription lifecycle event.
 
 ## References
 

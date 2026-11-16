@@ -1,6 +1,6 @@
 # Database migrations and recovery
 
-Migrations are ordered SQL files named `NNN_description.sql`. The cPanel installer applies them in lexical order. The current migrations use repeatable table creation and idempotent seed statements where possible. Migration 002 stores a one-time `legacy_superadmin_seeded` marker so rerunning the installer does not silently restore a Super Admin role that was intentionally removed. Do not delete this marker. Migration 003 changes the default language for newly created profiles to Vietnamese.
+Migrations are ordered SQL files named `NNN_description.sql`. The cPanel installer applies them in lexical order. The current migrations use repeatable table creation and idempotent seed statements where possible. Migration 002 stores a one-time `legacy_superadmin_seeded` marker so rerunning the installer does not silently restore a Super Admin role that was intentionally removed. Do not delete this marker. Migration 003 changes the default language for newly created profiles to Vietnamese. Migration 013 adds the provider-payment identity constraint and event-time watermark; before applying it to an installation that has already accepted payment webhooks, reconcile any duplicate non-null `(provider, provider_payment_id)` rows so the unique index can be created safely.
 
 ## MySQL/MariaDB DDL behavior
 

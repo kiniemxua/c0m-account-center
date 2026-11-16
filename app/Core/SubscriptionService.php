@@ -56,8 +56,11 @@ final class SubscriptionService
             throw new RuntimeException('subscription_owner_mismatch');
         }
         $eventCreatedAt = self::dateValue($data['_event_created_at'] ?? null);
+        if ($eventCreatedAt === null) {
+            throw new RuntimeException('provider_event_timestamp_required');
+        }
         if ($existing && $existing['provider_event_created_at'] !== null
-            && ($eventCreatedAt === null || $eventCreatedAt < $existing['provider_event_created_at'])) {
+            && $eventCreatedAt <= $existing['provider_event_created_at']) {
             return [
                 'subscription_id' => (int)$existing['id'],
                 'user_id' => (int)$userId,
