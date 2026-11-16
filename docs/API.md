@@ -110,7 +110,7 @@ The payment webhook endpoint is **POST /api/v1/webhooks/payments**. Configure a 
 
 - **X-C0M-Provider**: a configured provider key containing lowercase letters, digits, underscores or hyphens.
 - **X-C0M-Signature**: **t=<unix-seconds>,v1=<hex-hmac-sha256>**. The HMAC input is **<timestamp>.<raw-request-body>** and the signature timestamp must be within five minutes of receipt.
-- A JSON envelope with a unique **id**, **type**, provider event creation time in **created_at** (ISO-8601) or **created** (Unix seconds), and an object-valued **data**.
+- A JSON envelope with a unique **id**, **type**, provider event creation time in **created_at** (ISO-8601 string) or **created** (integer Unix seconds), and an object-valued **data**.
 
 Subscription lifecycle events (**subscription.activated**, **subscription.updated**, **subscription.canceled**) also require that provider event timestamp. Their **data** must include the member ID, plan key, stable provider subscription ID and current status/period fields expected by the subscription lifecycle. Older or equal-timestamp subscription events are ignored; missing timestamps are rejected.
 
