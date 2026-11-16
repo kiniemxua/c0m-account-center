@@ -39,8 +39,9 @@ c0m.me Account Center is a lightweight central identity and authorization hub fo
 
 ## Verified CI baseline
 
-- Commit `cc2a725` on `main` has a successful GitHub Actions run `43799692106`.
+- Main commit `669a3808` (including PR #20) has a successful GitHub Actions run `43806927572`.
 - All four matrix jobs passed: PHP 8.2 + MariaDB 11.4, PHP 8.3 + MariaDB 11.4, PHP 8.4 + MariaDB 11.4, and PHP 8.4 + MySQL 8.4.
+- The current payment lifecycle work is under PR #21; its CI is running separately and is not part of main until reviewed and merged.
 - This verifies the automated CI suite only. It does not prove cPanel filesystem behavior, live SMTP deliverability, real payment-provider integration, backup/restore, browser E2E or production security.
 
 ## Remaining production gates (not feature expansion)
