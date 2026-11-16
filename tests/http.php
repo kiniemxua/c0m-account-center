@@ -868,6 +868,111 @@ try {
     $outboxCount->execute(['key' => hash('sha256', 'generic:' . $paymentEventId)]);
     httpCheck((int)$outboxCount->fetchColumn() === 1, 'A processed payment webhook must create exactly one transactional outbox event.');
 
+    // A payment has one current transaction row; each signed provider event remains auditable.
+    $providerPaymentId = 'pay-' . bin2hex(random_bytes(10));
+    $paymentSuccessEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $paymentSuccessEventId;
+    $paymentCreatedAt = time();
+    $paymentSuccessBody = json_encode([
+        'id' => $paymentSuccessEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $paymentSuccessTimestamp = (string)time();
+    $paymentSuccessSignature = hash_hmac('sha256', $paymentSuccessTimestamp . '.' . $paymentSuccessBody, $paymentTestSecret);
+    $paymentSuccessHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentSuccessTimestamp . ',v1=' . $paymentSuccessSignature,
+    ];
+    $paymentSuccess = $request('POST', '/api/v1/webhooks/payments', $paymentSuccessBody, '', true, $paymentSuccessHeaders);
+    httpCheck($paymentSuccess['status'] === 200 && str_contains($paymentSuccess['body'], '"status":"processed"'),
+        'A signed successful payment event must be processed.');
+
+    $paymentRowLookup = $pdo->prepare(
+        'SELECT id, status, provider_event_id, provider_event_created_at
+         FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $paymentRow = $paymentRowLookup->fetch();
+    httpCheck($paymentRow && $paymentRow['status'] === 'succeeded'
+        && $paymentRow['provider_event_id'] === $paymentSuccessEventId,
+        'A successful provider payment must create one transaction with its event ordering timestamp.');
+
+    $stalePaymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $stalePaymentEventId;
+    $stalePaymentBody = json_encode([
+        'id' => $stalePaymentEventId,
+        'type' => 'payment.failed',
+        'created_at' => gmdate('c', $paymentCreatedAt - 1),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $stalePaymentTimestamp = (string)time();
+    $stalePaymentSignature = hash_hmac('sha256', $stalePaymentTimestamp . '.' . $stalePaymentBody, $paymentTestSecret);
+    $stalePayment = $request('POST', '/api/v1/webhooks/payments', $stalePaymentBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $stalePaymentTimestamp . ',v1=' . $stalePaymentSignature,
+    ]);
+    httpCheck($stalePayment['status'] === 200 && str_contains($stalePayment['body'], '"status":"ignored"'),
+        'An older failed event must be ignored after a newer successful payment event.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    httpCheck($paymentRowLookup->fetch()['status'] === 'succeeded',
+        'A stale failure must never downgrade a successful payment.');
+
+    $paymentRefundEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $paymentRefundEventId;
+    $paymentRefundBody = json_encode([
+        'id' => $paymentRefundEventId,
+        'type' => 'payment.refunded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 2),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $paymentRefundTimestamp = (string)time();
+    $paymentRefundSignature = hash_hmac('sha256', $paymentRefundTimestamp . '.' . $paymentRefundBody, $paymentTestSecret);
+    $paymentRefundHeaders = [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $paymentRefundTimestamp . ',v1=' . $paymentRefundSignature,
+    ];
+    $paymentRefund = $request('POST', '/api/v1/webhooks/payments', $paymentRefundBody, '', true, $paymentRefundHeaders);
+    httpCheck($paymentRefund['status'] === 200 && str_contains($paymentRefund['body'], '"status":"processed"'),
+        'A later full-refund event must update the existing payment transaction.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $refundedPaymentRow = $paymentRowLookup->fetch();
+    httpCheck($refundedPaymentRow && $refundedPaymentRow['status'] === 'refunded'
+        && $refundedPaymentRow['provider_event_id'] === $paymentRefundEventId,
+        'A refund must update the original payment row instead of creating a second transaction.');
+    $paymentRowCount = $pdo->prepare(
+        'SELECT COUNT(*) FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $paymentRowCount->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    httpCheck((int)$paymentRowCount->fetchColumn() === 1,
+        'All lifecycle events for one provider payment must resolve to exactly one transaction row.');
+
+    $duplicateRefund = $request('POST', '/api/v1/webhooks/payments', $paymentRefundBody, '', true, $paymentRefundHeaders);
+    httpCheck($duplicateRefund['status'] === 200 && str_contains($duplicateRefund['body'], '"duplicate":true'),
+        'A repeated refund event must be acknowledged without applying the transition twice.');
+
     $scheduledEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $scheduledEventId;
     $scheduledBody = json_encode([
