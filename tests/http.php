@@ -968,7 +968,7 @@ try {
     $outOfOrderRefundBody = json_encode([
         'id' => $outOfOrderRefundEventId,
         'type' => 'payment.refunded',
-        'created_at' => gmdate('c', $paymentCreatedAt + 0.5),
+        'created_at' => gmdate('c', $paymentCreatedAt),
         'data' => [
             'user_id' => $testUserId,
             'subscription_id' => (int)$subscriptionRow['id'],
