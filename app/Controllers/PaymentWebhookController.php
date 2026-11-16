@@ -181,6 +181,17 @@ final class PaymentWebhookController
 
                     if (!$canTransition) {
                         $status = 'ignored';
+                        // Keep the provider event-time watermark even when the state
+                        // transition is invalid, so an older later delivery cannot win.
+                        if ($isNewer) {
+                            $advanceWatermark = $pdo->prepare(
+                                'UPDATE payment_transactions SET provider_event_created_at = :event_created_at WHERE id = :id'
+                            );
+                            $advanceWatermark->execute([
+                                'event_created_at' => $eventCreatedAt,
+                                'id' => (int)$existingPayment['id'],
+                            ]);
+                        }
                     } else {
                         $updatePayment = $pdo->prepare(
                             'UPDATE payment_transactions
