@@ -172,6 +172,24 @@ assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === $re
     'A stale provider event must not bump authorization revision.');
 assertIntegration(App\Core\EntitlementService::forUser($pdo, $userId) === $entitlementsBeforeStale,
     'A stale provider event must not revoke or change member entitlements.');
+// Equal timestamps are accepted (ordering is strictly older), and Unix timestamps normalize to UTC.
+$pdo->beginTransaction();
+$equalTimestampResult = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
+    'status' => 'past_due',
+    '_event_created_at' => '2026-02-02T12:00:00Z',
+]));
+$pdo->commit();
+assertIntegration(empty($equalTimestampResult['stale_event']), 'Events with the same provider timestamp must remain eligible for processing.');
+$subscriptionState->execute(['id' => $subscriptionId]);
+assertIntegration($subscriptionState->fetch()['status'] === 'past_due', 'An equal-timestamp event must be applied.');
+$pdo->beginTransaction();
+$restoredSubscription = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
+    '_event_created_at' => strtotime('2026-02-03T12:00:00Z'),
+]));
+$pdo->commit();
+assertIntegration(($restoredSubscription['status'] ?? '') === 'active', 'A newer Unix-timestamp event must restore the active subscription.');
+$subscriptionState->execute(['id' => $subscriptionId]);
+assertIntegration($subscriptionState->fetch()['provider_event_created_at'] === '2026-02-03 12:00:00.000000', 'Unix provider timestamps must persist normalized UTC microseconds.');
 $pdo->prepare('DELETE FROM subscriptions WHERE id = :id')->execute(['id' => $subscriptionId]);
 $pdo->prepare('DELETE FROM subscription_plans WHERE plan_key = :key')->execute(['key' => $paidPlanKey]);
 
@@ -220,9 +238,10 @@ $pdo->prepare('DELETE FROM user_roles WHERE user_id = :id')->execute(['id' => $u
 $superRole->execute(['id' => $userId]);
 
 // Multiple roles must persist and render as individually selected checkboxes.
+$revisionBeforeRoleChange = App\Core\AuthorizationRevision::current($pdo, $userId);
 $multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['member', 'super_admin']);
 $roleRevision = App\Core\AuthorizationRevision::current($pdo, $userId);
-assertIntegration($roleRevision === 2, 'Changing user roles must increment the authorization revision.');
+assertIntegration($roleRevision === $revisionBeforeRoleChange + 1, 'Changing user roles must increment the authorization revision.');
 $multiRoles = App\Core\UserRoleManager::replace($pdo, $userId, ['super_admin', 'member']);
 assertIntegration(App\Core\AuthorizationRevision::current($pdo, $userId) === $roleRevision, 'Reapplying the same role set must not increment the authorization revision.');
 $roleLookup = $pdo->prepare(
