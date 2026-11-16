@@ -174,7 +174,7 @@ assertIntegration(App\Core\EntitlementService::forUser($pdo, $userId) === $entit
     'A stale provider event must not revoke or change member entitlements.');
 // Equal timestamps are accepted (ordering is strictly older), and Unix timestamps normalize to UTC.
 $pdo->beginTransaction();
-$equalTimestampResult = App\\Core\\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
+$equalTimestampResult = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
     'status' => 'past_due',
     '_event_created_at' => '2026-02-02T12:00:00Z',
 ]));
@@ -183,7 +183,7 @@ assertIntegration(empty($equalTimestampResult['stale_event']), 'Events with the 
 $subscriptionState->execute(['id' => $subscriptionId]);
 assertIntegration($subscriptionState->fetch()['status'] === 'past_due', 'An equal-timestamp event must be applied.');
 $pdo->beginTransaction();
-$restoredSubscription = App\\Core\\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
+$restoredSubscription = App\Core\SubscriptionService::applyProviderSubscription($pdo, 'ci-provider', 'subscription.updated', array_merge($subscriptionEvent, [
     '_event_created_at' => strtotime('2026-02-03T12:00:00Z'),
 ]));
 $pdo->commit();
