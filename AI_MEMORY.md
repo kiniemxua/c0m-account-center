@@ -26,11 +26,11 @@ c0m.me Account Center is a lightweight central identity and authorization hub fo
 - Browser-based OAuth client provisioning, confidential-secret rotation and client lifecycle controls.
 - Versioned member APIs for profile, groups, memberships, permissions and entitlements, plus a lightweight PHP SDK.
 - Subscription plan management, subscription/entitlement synchronization, signed/idempotent payment webhook event processing, transactional outbox and retryable outbound application webhooks.
-- Payment transaction lifecycle: one current transaction row per provider/payment ID, retained webhook delivery audit records, provider event timestamp ordering, safe failed-to-succeeded retries, full-refund transitions, and transactional outbox publication.
+- Payment transaction lifecycle on PR #21: one current transaction row per provider/payment ID, retained webhook delivery audit records, provider event timestamp ordering, safe failed-to-succeeded retries, full-refund transitions, and transactional outbox publication. This work is not yet part of main.
 
 ## Migrations and operational commands
 
-- Repeatable SQL migrations are in `database/migrations/`; the current sequence is 001–013.
+- Repeatable SQL migrations are in `database/migrations/`; PR #21 adds migration 013 (001–013 on that branch).
 - Existing installations must run `php scripts/migrate.php` before using schema additions.
 - OAuth client provisioning: `php scripts/create-oauth-client.php`.
 - Signing-key rotation: `php scripts/rotate-oidc-signing-key.php`; validate the operational backup/recovery procedure before relying on rotation in production.
@@ -41,8 +41,8 @@ c0m.me Account Center is a lightweight central identity and authorization hub fo
 
 - Main commit `669a3808` (including PR #20) has a successful GitHub Actions run `43806927572`.
 - All four matrix jobs passed: PHP 8.2 + MariaDB 11.4, PHP 8.3 + MariaDB 11.4, PHP 8.4 + MariaDB 11.4, and PHP 8.4 + MySQL 8.4.
-- The current payment lifecycle work is under PR #21; its CI is running separately and is not part of main until reviewed and merged.
-- This verifies the automated CI suite only. It does not prove cPanel filesystem behavior, live SMTP deliverability, real payment-provider integration, backup/restore, browser E2E or production security.
+- PR #21 head `c4df3f68` also has a successful full CI run `43808554546`; all four matrix jobs passed, including syntax, unit, SDK, localization/email, SMTP, installer recovery, database integration, RBAC concurrency and HTTP router tests. PR #21 remains open and has not been merged into main.
+- CI verifies the automated suite only. It does not prove cPanel filesystem behavior, live SMTP deliverability, real payment-provider integration, backup/restore, browser E2E or production security.
 
 ## Remaining production gates (not feature expansion)
 
