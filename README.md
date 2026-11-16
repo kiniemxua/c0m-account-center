@@ -77,7 +77,7 @@ Run:
 - `php tests/rbac-concurrency.php` (requires a disposable MariaDB database and PHP proc_open)
 - `php tests/http.php` (requires the same DB_* environment variables and PHP proc_open)
 
-The GitHub Actions workflow tests PHP 8.2, 8.3 and 8.4 against MariaDB 11.4. It runs repository-wide PHP syntax checks, unit tests, localization/catalog and email-template tests, SMTP protocol tests, installer recovery tests, database integration tests and real HTTP router tests. A configured workflow is not evidence of a passing run; check the Actions result for the exact commit.
+The GitHub Actions workflow runs the full test suite on PHP 8.2 + MariaDB 11.4, PHP 8.3 + MariaDB 11.4, PHP 8.4 + MariaDB 11.4, and PHP 8.4 + MySQL 8.4. It runs repository-wide PHP syntax checks, unit tests, localization/catalog and email-template tests, SMTP protocol tests, installer recovery tests, database integration tests and real HTTP router tests. A configured workflow is not evidence of a passing run; check the Actions result for the exact commit.
 
 ## Localization (Vietnamese / English)
 

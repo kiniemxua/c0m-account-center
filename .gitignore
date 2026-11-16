@@ -1,11 +1,13 @@
 /config/database.php
+/config/app.php
+/config/mail.php
+/config/payments.php
 /installer/installed.lock
+/storage/install.lock
 /vendor/
 /.env
 *.log
 .DS_Store
-/config/payments.php
 /storage/oauth-signing-private.pem
-
 /storage/oauth-signing-previous/
 /storage/oauth-signing-rotation.lock
