@@ -28,6 +28,7 @@ The repository contains an account/authentication foundation:
 - Super Admin application registry for creating, editing, featuring and disabling catalog entries, with transactional audit events.
 - Super Admin member-group creation, membership assignment and active/disabled lifecycle with revision updates.
 - Super Admin subscription-plan management with validated feature/quota JSON, immutable plan keys, archive safeguards and transactional entitlement synchronization.
+- Normalized payment transaction lifecycle with one current row per provider payment, retained webhook event history, provider timestamp ordering, failed-to-succeeded retries, full-refund transitions and transactional outbox publication.
 - Application-specific group grants for `restricted` registry entries; the dashboard checks active group membership server-side.
 - Versioned member APIs for profile, active groups, group memberships, effective roles/permissions and subscription entitlements, all protected by scoped OAuth bearer tokens and authorization revisions.
 - Lightweight PHP SDK for connected products, including consistent authorization snapshots, revision-aware cache refresh and fail-closed permission/feature/quota checks.
@@ -40,7 +41,7 @@ The repository contains an account/authentication foundation:
 - Password change with current-password verification, throttling, session revocation and email notification.
 - Application and installer requests fail closed unless direct HTTPS or an explicitly configured trusted proxy proves HTTPS; forwarded headers from untrusted clients are ignored.
 
-**Not production-ready.** OAuth2/OIDC authorization-code SSO, scoped UserInfo and token lifecycle are now implemented and covered by HTTP integration tests, but the provider still needs an independent protocol/security review, signing-key rotation and broader rate limiting. Subscription plans, entitlements, signed payment webhook ingestion and transactional outbox delivery are implemented; production provider checkout adapters, renewal/failure/refund operations and outbound webhook SSRF protections are implemented but still require live delivery verification. External applications must validate tokens and enforce authorization server-side; dashboard visibility is never an authorization boundary. Do not accept production accounts or financial activity until the remaining modules, security review and deployment gates are complete.
+**Not production-ready.** OAuth2/OIDC authorization-code SSO, scoped UserInfo and token lifecycle are now implemented and covered by HTTP integration tests, but the provider still needs an independent protocol/security review, signing-key rotation and broader rate limiting. Subscription plans, entitlements, signed payment webhook ingestion, normalized payment transaction lifecycle and transactional outbox delivery are implemented; provider-specific checkout/recurring-billing adapters, partial refunds and reconciliation remain incomplete. Outbound webhook SSRF protections are implemented but still require live delivery verification. External applications must validate tokens and enforce authorization server-side; dashboard visibility is never an authorization boundary. Do not accept production accounts or financial activity until the remaining modules, security review and deployment gates are complete.
 
 ## cPanel installation
 
