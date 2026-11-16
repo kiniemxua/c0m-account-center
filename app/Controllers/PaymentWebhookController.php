@@ -65,8 +65,15 @@ final class PaymentWebhookController
         $eventId = is_array($event) && is_string($event['id'] ?? null) ? trim($event['id']) : '';
         $eventType = is_array($event) && is_string($event['type'] ?? null) ? trim($event['type']) : '';
         $data = is_array($event) && is_array($event['data'] ?? null) ? $event['data'] : null;
-        $createdAt = is_array($event) ? ($event['created_at'] ?? $event['created'] ?? null) : null;
-        if (is_array($data) && (is_string($createdAt) || is_int($createdAt))) {
+        $createdAt = null;
+        if (is_array($event)) {
+            if (is_string($event['created_at'] ?? null)) {
+                $createdAt = $event['created_at'];
+            } elseif (is_int($event['created'] ?? null)) {
+                $createdAt = $event['created'];
+            }
+        }
+        if (is_array($data) && $createdAt !== null) {
             $data['_event_created_at'] = $createdAt;
         }
         if ($eventId === '' || strlen($eventId) > 190 || $eventType === '' || strlen($eventType) > 120
