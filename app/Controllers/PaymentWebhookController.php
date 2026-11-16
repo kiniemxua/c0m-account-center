@@ -154,6 +154,7 @@ final class PaymentWebhookController
                 $findPayment->execute(['provider' => $provider, 'payment' => $paymentId]);
                 $existingPayment = $findPayment->fetch(PDO::FETCH_ASSOC);
 
+                $effectiveSubscriptionId = $subscriptionId;
                 if ($existingPayment) {
                     if ((int)$existingPayment['user_id'] !== (int)$userId
                         || (int)$existingPayment['amount_minor'] !== (int)$amount
@@ -161,6 +162,9 @@ final class PaymentWebhookController
                         || ($subscriptionId !== null && $existingPayment['subscription_id'] !== null
                             && (int)$existingPayment['subscription_id'] !== $subscriptionId)) {
                         throw new RuntimeException('payment_identity_mismatch');
+                    }
+                    if ($effectiveSubscriptionId === null && $existingPayment['subscription_id'] !== null) {
+                        $effectiveSubscriptionId = (int)$existingPayment['subscription_id'];
                     }
 
                     $previousEventAt = $existingPayment['provider_event_created_at'];
@@ -187,7 +191,7 @@ final class PaymentWebhookController
                         );
                         $updatePayment->execute([
                             'event' => $eventId,
-                            'subscription' => $subscriptionId,
+                            'subscription' => $effectiveSubscriptionId,
                             'status' => $paymentStatus,
                             'hash' => hash('sha256', $rawBody),
                             'event_created_at' => $eventCreatedAt,
@@ -210,7 +214,7 @@ final class PaymentWebhookController
                         'event' => $eventId,
                         'payment' => $paymentId,
                         'user' => (int)$userId,
-                        'subscription' => $subscriptionId,
+                        'subscription' => $effectiveSubscriptionId,
                         'amount' => (int)$amount,
                         'currency' => $currency,
                         'status' => $paymentStatus,
@@ -222,7 +226,7 @@ final class PaymentWebhookController
                 $outboxData += [
                     'user_id' => (int)$userId,
                     'payment_id' => $paymentId,
-                    'subscription_id' => $subscriptionId,
+                    'subscription_id' => $effectiveSubscriptionId,
                     'amount_minor' => (int)$amount,
                     'currency' => $currency,
                     'status' => $paymentStatus,
@@ -288,7 +292,11 @@ final class PaymentWebhookController
         if (!is_string($value) && !is_int($value)) {
             throw new RuntimeException('invalid_payment_event_timestamp');
         }
-        if (is_string($value) && (strlen($value) > 80 || trim($value) !== $value)) {
+        if (is_string($value) && (
+            strlen($value) > 80
+            || trim($value) !== $value
+            || preg_match('/\\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(?:\\.[0-9]{1,6})?(?:Z|[+-][0-9]{2}:[0-9]{2})\\z/D', $value) !== 1
+        )) {
             throw new RuntimeException('invalid_payment_event_timestamp');
         }
 
