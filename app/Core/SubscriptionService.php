@@ -128,6 +128,74 @@ final class SubscriptionService
         ];
     }
 
+    
+    /**
+     * Cancel a user's subscription safely. Scheduled cancellation keeps access
+     * through the paid period; immediate cancellation synchronizes entitlements.
+     * Caller may wrap this operation in a transaction.
+     */
+    public static function cancel(PDO $pdo, int $userId, int $subscriptionId, bool $atPeriodEnd = true): array
+    {
+        if ($userId < 1 || $subscriptionId < 1) throw new RuntimeException('invalid_subscription_owner');
+        $stmt = $pdo->prepare(
+            'SELECT id, user_id, status, current_period_end, cancel_at_period_end
+             FROM subscriptions WHERE id = :id LIMIT 1 FOR UPDATE'
+        );
+        $stmt->execute(['id' => $subscriptionId]);
+        $row = $stmt->fetch();
+        if (!$row || (int)$row['user_id'] !== $userId) throw new RuntimeException('subscription_not_found');
+        if (!in_array($row['status'], ['pending','trialing','active','past_due'], true)) {
+            throw new RuntimeException('subscription_not_cancellable');
+        }
+        if ($atPeriodEnd && (!in_array($row['status'], ['trialing','active','past_due'], true)
+            || $row['current_period_end'] === null
+            || strtotime((string)$row['current_period_end'] . ' UTC') <= time())) {
+            throw new RuntimeException('subscription_period_end_unavailable');
+        }
+
+        if ($atPeriodEnd) {
+            $pdo->prepare(
+                'UPDATE subscriptions SET cancel_at_period_end = 1, updated_at = UTC_TIMESTAMP() WHERE id = :id'
+            )->execute(['id' => $subscriptionId]);
+            return ['subscription_id'=>$subscriptionId, 'status'=>(string)$row['status'],
+                'cancel_at_period_end'=>true, 'access_until'=>(string)$row['current_period_end']];
+        }
+
+        $pdo->prepare(
+            "UPDATE subscriptions SET status = 'canceled', cancel_at_period_end = 0,
+             canceled_at = UTC_TIMESTAMP(), updated_at = UTC_TIMESTAMP() WHERE id = :id"
+        )->execute(['id' => $subscriptionId]);
+        $revision = EntitlementService::synchronize($pdo, $subscriptionId);
+        return ['subscription_id'=>$subscriptionId, 'status'=>'canceled',
+            'cancel_at_period_end'=>false, 'authorization_revision'=>$revision];
+    }
+
+    /**
+     * Finalize scheduled cancellations whose paid period has ended.
+     * Returns the number of subscriptions transitioned.
+     */
+    public static function finalizeScheduledCancellations(PDO $pdo, int $limit = 100): int
+    {
+        $limit = max(1, min(500, $limit));
+        $stmt = $pdo->query(
+            "SELECT id FROM subscriptions WHERE cancel_at_period_end = 1
+             AND status IN ('active','trialing','past_due')
+             AND current_period_end IS NOT NULL AND current_period_end <= UTC_TIMESTAMP()
+             ORDER BY current_period_end, id LIMIT {$limit} FOR UPDATE"
+        );
+        $ids = array_map('intval', $stmt->fetchAll(PDO::FETCH_COLUMN));
+        $update = $pdo->prepare(
+            "UPDATE subscriptions SET status = 'canceled', cancel_at_period_end = 0,
+             canceled_at = COALESCE(canceled_at, UTC_TIMESTAMP()), updated_at = UTC_TIMESTAMP()
+             WHERE id = :id"
+        );
+        foreach ($ids as $id) {
+            $update->execute(['id'=>$id]);
+            EntitlementService::synchronize($pdo, $id);
+        }
+        return count($ids);
+    }
+
     private static function dateValue(mixed $value): ?string
     {
         if ($value === null || $value === '') return null;
