@@ -119,40 +119,29 @@ check(($jwks['keys'][0]['kty'] ?? null) === 'RSA' && ($jwks['keys'][0]['alg'] ??
     && ($jwks['keys'][0]['kid'] ?? null) === $jwtHeader['kid']
     && isset($jwks['keys'][0]['n'], $jwks['keys'][0]['e']), 'The public JWKS must publish the active RSA signing key.');
 
-// Previous public signing keys remain discoverable during the 24-hour overlap.
+// JWKS must retain a previous public key during the rotation overlap window.
 $previousDirectory = BASE_PATH . '/storage/oauth-signing-previous';
-$previousDirectoryExisted = is_dir($previousDirectory);
-if (!$previousDirectoryExisted && !mkdir($previousDirectory, 0750, true) && !is_dir($previousDirectory)) {
-    throw new RuntimeException('Could not create the temporary previous-key test directory.');
+$createdPreviousDirectory = !is_dir($previousDirectory);
+if ($createdPreviousDirectory) {
+    mkdir($previousDirectory, 0750, true);
 }
-$previousFixtureKey = openssl_pkey_new([
-    'private_key_type' => OPENSSL_KEYTYPE_RSA,
-    'private_key_bits' => 2048,
-]);
-$previousFixtureDetails = $previousFixtureKey ? openssl_pkey_get_details($previousFixtureKey) : false;
-if (!is_array($previousFixtureDetails) || !isset($previousFixtureDetails['key'])) {
-    throw new RuntimeException('Could not generate the previous-key test fixture.');
-}
-$previousFixtureKid = substr(hash('sha256', $previousFixtureDetails['key']), 0, 24);
-$previousFixturePath = $previousDirectory . '/' . $previousFixtureKid . '.pem';
+$previousKey = openssl_pkey_new(['private_key_type' => OPENSSL_KEYTYPE_RSA, 'private_key_bits' => 2048]);
+$previousDetails = $previousKey ? openssl_pkey_get_details($previousKey) : false;
+check(is_array($previousDetails) && isset($previousDetails['key']), 'A test previous RSA key must be generated.');
+$previousKid = substr(hash('sha256', $previousDetails['key']), 0, 24);
+$previousPath = $previousDirectory . '/' . $previousKid . '.pem';
+check(file_put_contents($previousPath, $previousDetails['key'], LOCK_EX) !== false, 'A test previous public key must be persisted.');
 try {
-    check(!file_exists($previousFixturePath), 'The temporary previous-key fixture path must be unique.');
-    check(file_put_contents($previousFixturePath, $previousFixtureDetails['key'], LOCK_EX) !== false,
-        'The previous public-key fixture must be persisted.');
-    touch($previousFixturePath, time());
-    $jwksWithPrevious = App\Core\OidcSigner::jwks();
-    $previousKeyIds = array_column($jwksWithPrevious['keys'], 'kid');
-    check(in_array($previousFixtureKid, $previousKeyIds, true),
-        'JWKS must publish a valid previous public key during the overlap window.');
-
-    touch($previousFixturePath, time() - 86401);
-    $jwksAfterOverlap = App\Core\OidcSigner::jwks();
-    $expiredKeyIds = array_column($jwksAfterOverlap['keys'], 'kid');
-    check(!in_array($previousFixtureKid, $expiredKeyIds, true),
-        'JWKS must stop publishing previous public keys after the 24-hour overlap window.');
+    $overlapJwks = App\Core\OidcSigner::jwks();
+    check(count(array_filter($overlapJwks['keys'], static fn(array $key): bool => ($key['kid'] ?? '') === $previousKid)) === 1,
+        'JWKS must publish a previous public key during the overlap period.');
+    touch($previousPath, time() - 86401);
+    $expiredJwks = App\Core\OidcSigner::jwks();
+    check(count(array_filter($expiredJwks['keys'], static fn(array $key): bool => ($key['kid'] ?? '') === $previousKid)) === 0,
+        'JWKS must stop publishing previous keys after the 24-hour overlap.');
 } finally {
-    @unlink($previousFixturePath);
-    if (!$previousDirectoryExisted) @rmdir($previousDirectory);
+    @unlink($previousPath);
+    if ($createdPreviousDirectory) @rmdir($previousDirectory);
 }
 
 $webhookSecret = bin2hex(random_bytes(32));

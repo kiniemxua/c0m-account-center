@@ -21,6 +21,15 @@ final class OAuthController
         }
         $pending = $_SESSION['oauth_pending'] ?? null;
         if (!is_array($pending)) {
+            $requestedClientId = is_string($_GET['client_id'] ?? null) ? $_GET['client_id'] : '';
+            if ($this->authorizationRateLimited($requestedClientId)) {
+                http_response_code(429);
+                header('Retry-After: 900');
+                header('Cache-Control: no-store');
+                echo \\App\\Core\\t('Too many authorization requests. Please try again later.');
+                return;
+            }
+            $this->recordAuthorizationAttempt($requestedClientId);
             $pending = $this->validateAuthorizationRequest($_GET);
             if ($pending === null) return;
             $_SESSION['oauth_pending'] = $pending;
@@ -415,6 +424,31 @@ final class OAuthController
      * refresh tokens. Successful grants do not consume this failure budget.
      * The client and source-IP limits are independent and use REMOTE_ADDR only.
      */
+    private function authorizationRateLimited(string $clientId): bool
+    {
+        $pdo = Database::connection();
+        $ip = filter_var($_SERVER['REMOTE_ADDR'] ?? '', FILTER_VALIDATE_IP);
+        if ($ip !== false) {
+            $packedIp = inet_pton($ip);
+            $q = $pdo->prepare("SELECT COUNT(*) FROM auth_attempts WHERE action='oauth_authorize' AND ip_address=:ip AND created_at >= (UTC_TIMESTAMP() - INTERVAL 15 MINUTE)");
+            $q->bindValue(':ip',$packedIp,PDO::PARAM_LOB); $q->execute();
+            if ((int)$q->fetchColumn() >= 60) return true;
+        }
+        if (preg_match('/\\A[a-f0-9]{64}\\z/D',$clientId)) {
+            $q=$pdo->prepare("SELECT COUNT(*) FROM auth_attempts WHERE action='oauth_authorize' AND identifier_hash=:id AND created_at >= (UTC_TIMESTAMP() - INTERVAL 15 MINUTE)");
+            $q->execute(['id'=>hash('sha256','oauth-authorize:'.$clientId)]);
+            if ((int)$q->fetchColumn() >= 30) return true;
+        }
+        return false;
+    }
+    private function recordAuthorizationAttempt(string $clientId): void
+    {
+        $ip=filter_var($_SERVER['REMOTE_ADDR']??'',FILTER_VALIDATE_IP); $packed=$ip!==false?inet_pton($ip):null;
+        $id=preg_match('/\\A[a-f0-9]{64}\\z/D',$clientId)?hash('sha256','oauth-authorize:'.$clientId):hash('sha256','oauth-authorize:invalid-client');
+        $q=Database::connection()->prepare("INSERT INTO auth_attempts(action,ip_address,identifier_hash) VALUES('oauth_authorize',:ip,:id)");
+        $q->bindValue(':ip',$packed,$packed===null?PDO::PARAM_NULL:PDO::PARAM_LOB); $q->bindValue(':id',$id); $q->execute();
+    }
+
     private function grantRateLimited(array $client): bool
     {
         $pdo = Database::connection();

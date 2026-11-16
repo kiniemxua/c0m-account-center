@@ -1042,6 +1042,18 @@ try {
     ]), $authCookie);
     httpCheck($enableOauthClient['status'] === 303, 'A Super Admin must be able to re-enable an OAuth client.');
 
+    // Authorization endpoint must enforce the per-client budget even for malformed requests.
+    $rateLimitClient = str_repeat('a', 64);
+    $rateLimitStatus = 0;
+    for ($attempt = 1; $attempt <= 31; $attempt++) {
+        $rateLimitResponse = $request('GET', '/oauth/authorize?client_id=' . $rateLimitClient . '&response_type=invalid');
+        $rateLimitStatus = $rateLimitResponse['status'];
+    }
+    httpCheck($rateLimitStatus === 429, 'OAuth authorization requests must be rate-limited per client before request validation.');
+    $rateLimitCount = $pdo->prepare("SELECT COUNT(*) FROM auth_attempts WHERE action = 'oauth_authorize' AND identifier_hash = :identifier");
+    $rateLimitCount->execute(['identifier' => hash('sha256', 'oauth-authorize:' . $rateLimitClient)]);
+    httpCheck((int)$rateLimitCount->fetchColumn() === 30, 'OAuth authorization limiter must record only the allowed per-client attempts.');
+
     $memberDashboard = $request('GET', '/dashboard', '', $authCookie);
     httpCheck($memberDashboard['status'] === 200 && str_contains($memberDashboard['body'], $registryName) && str_contains($memberDashboard['body'], 'https://registry.example.test/app'), 'Active member applications must appear as safe links on the dashboard.');
     $invalidRegistryUrl = $request('POST', '/admin/applications/save', http_build_query([
