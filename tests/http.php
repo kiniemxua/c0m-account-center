@@ -936,6 +936,37 @@ try {
         && $unchangedPaymentRow['provider_event_id'] === $paymentSuccessEventId,
         'Payment identity validation must leave the original payment unchanged.');
 
+    $foreignSubscriptionPaymentId = 'pay-' . bin2hex(random_bytes(10));
+    $foreignSubscriptionEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $foreignSubscriptionEventId;
+    $foreignSubscriptionBody = json_encode([
+        'id' => $foreignSubscriptionEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 1),
+        'data' => [
+            'user_id' => (int)$flowUserRow['id'],
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $foreignSubscriptionPaymentId,
+            'amount_minor' => 100,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $foreignSubscriptionTimestamp = (string)time();
+    $foreignSubscriptionSignature = hash_hmac('sha256', $foreignSubscriptionTimestamp . '.' . $foreignSubscriptionBody, $paymentTestSecret);
+    $foreignSubscription = $request('POST', '/api/v1/webhooks/payments', $foreignSubscriptionBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $foreignSubscriptionTimestamp . ',v1=' . $foreignSubscriptionSignature,
+    ]);
+    httpCheck($foreignSubscription['status'] === 400,
+        'A payment event must not attach another member’s subscription.');
+    $foreignPaymentCount = $pdo->prepare(
+        'SELECT COUNT(*) FROM payment_transactions WHERE provider = :provider AND provider_payment_id = :payment'
+    );
+    $foreignPaymentCount->execute(['provider' => 'generic', 'payment' => $foreignSubscriptionPaymentId]);
+    httpCheck((int)$foreignPaymentCount->fetchColumn() === 0,
+        'A rejected cross-member subscription reference must not create a payment transaction.');
+
     $stalePaymentEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $stalePaymentEventId;
     $stalePaymentBody = json_encode([
