@@ -315,4 +315,5 @@ return [
 'none' => 'Không định kỳ',
 'month' => 'Hàng tháng',
 'year' => 'Hàng năm',
+'Too many authorization requests. Please try again later.' => 'Có quá nhiều yêu cầu xác thực. Vui lòng thử lại sau.',
 ];
