@@ -768,6 +768,7 @@ try {
     $paymentEventBody = json_encode([
         'id' => $paymentEventId,
         'type' => 'subscription.activated',
+        'created_at' => gmdate('c', time() - 10),
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,
@@ -1127,6 +1128,7 @@ try {
     $scheduledBody = json_encode([
         'id' => $scheduledEventId,
         'type' => 'subscription.canceled',
+        'created_at' => gmdate('c', time() - 5),
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,
@@ -1155,6 +1157,7 @@ try {
     $immediateBody = json_encode([
         'id' => $immediateEventId,
         'type' => 'subscription.canceled',
+        'created_at' => gmdate('c', time() - 1),
         'data' => [
             'user_id' => $testUserId,
             'plan_key' => $planKey,
