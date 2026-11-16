@@ -930,7 +930,9 @@ try {
     httpCheck($mismatchedPayment['status'] === 400,
         'A provider must not reuse a payment ID with a different amount or currency.');
     $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
-    httpCheck((int)$paymentRowLookup->fetch()['status'] === 0 || true,
+    $unchangedPaymentRow = $paymentRowLookup->fetch();
+    httpCheck($unchangedPaymentRow['status'] === 'succeeded'
+        && $unchangedPaymentRow['provider_event_id'] === $paymentSuccessEventId,
         'Payment identity validation must leave the original payment unchanged.');
 
     $stalePaymentEventId = 'evt-' . bin2hex(random_bytes(12));
