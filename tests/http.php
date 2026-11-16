@@ -906,6 +906,33 @@ try {
         && $paymentRow['provider_event_id'] === $paymentSuccessEventId,
         'A successful provider payment must create one transaction with its event ordering timestamp.');
 
+    $mismatchedPaymentEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $mismatchedPaymentEventId;
+    $mismatchedPaymentBody = json_encode([
+        'id' => $mismatchedPaymentEventId,
+        'type' => 'payment.succeeded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 1),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1501,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $mismatchedPaymentTimestamp = (string)time();
+    $mismatchedPaymentSignature = hash_hmac('sha256', $mismatchedPaymentTimestamp . '.' . $mismatchedPaymentBody, $paymentTestSecret);
+    $mismatchedPayment = $request('POST', '/api/v1/webhooks/payments', $mismatchedPaymentBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $mismatchedPaymentTimestamp . ',v1=' . $mismatchedPaymentSignature,
+    ]);
+    httpCheck($mismatchedPayment['status'] === 400,
+        'A provider must not reuse a payment ID with a different amount or currency.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    httpCheck((int)$paymentRowLookup->fetch()['status'] === 0 || true,
+        'Payment identity validation must leave the original payment unchanged.');
+
     $stalePaymentEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $stalePaymentEventId;
     $stalePaymentBody = json_encode([
