@@ -1109,6 +1109,19 @@ try {
     httpCheck($duplicateRefund['status'] === 200 && str_contains($duplicateRefund['body'], '"duplicate":true'),
         'A repeated refund event must be acknowledged without applying the transition twice.');
 
+    $reusedEventBody = str_replace('"amount_minor":1500', '"amount_minor":1501', $paymentRefundBody);
+    httpCheck($reusedEventBody !== $paymentRefundBody, 'The altered duplicate fixture must differ from the original payload.');
+    $reusedEventTimestamp = (string)time();
+    $reusedEventSignature = hash_hmac('sha256', $reusedEventTimestamp . '.' . $reusedEventBody, $paymentTestSecret);
+    $reusedEvent = $request('POST', '/api/v1/webhooks/payments', $reusedEventBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $reusedEventTimestamp . ',v1=' . $reusedEventSignature,
+    ]);
+    httpCheck($reusedEvent['status'] === 409 && str_contains($reusedEvent['body'], 'event_id_conflict'),
+        'Reusing a provider event ID with a different signed payload must be rejected.');
+
+
     $scheduledEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $scheduledEventId;
     $scheduledBody = json_encode([
