@@ -933,6 +933,60 @@ try {
     httpCheck($paymentRowLookup->fetch()['status'] === 'succeeded',
         'A stale failure must never downgrade a successful payment.');
 
+    $newerBackwardEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $newerBackwardEventId;
+    $newerBackwardEventAt = $paymentCreatedAt + 1;
+    $newerBackwardBody = json_encode([
+        'id' => $newerBackwardEventId,
+        'type' => 'payment.failed',
+        'created_at' => gmdate('c', $newerBackwardEventAt),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $newerBackwardTimestamp = (string)time();
+    $newerBackwardSignature = hash_hmac('sha256', $newerBackwardTimestamp . '.' . $newerBackwardBody, $paymentTestSecret);
+    $newerBackward = $request('POST', '/api/v1/webhooks/payments', $newerBackwardBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $newerBackwardTimestamp . ',v1=' . $newerBackwardSignature,
+    ]);
+    httpCheck($newerBackward['status'] === 200 && str_contains($newerBackward['body'], '"status":"ignored"'),
+        'A newer backwards state transition must be ignored.');
+    $paymentRowLookup->execute(['provider' => 'generic', 'payment' => $providerPaymentId]);
+    $watermarkedPayment = $paymentRowLookup->fetch();
+    httpCheck($watermarkedPayment['status'] === 'succeeded'
+        && $watermarkedPayment['provider_event_created_at'] === gmdate('Y-m-d H:i:s', $newerBackwardEventAt) . '.000000',
+        'An ignored newer event must still advance the provider event-time watermark.');
+
+    $outOfOrderRefundEventId = 'evt-' . bin2hex(random_bytes(12));
+    $paymentEventIds[] = $outOfOrderRefundEventId;
+    $outOfOrderRefundBody = json_encode([
+        'id' => $outOfOrderRefundEventId,
+        'type' => 'payment.refunded',
+        'created_at' => gmdate('c', $paymentCreatedAt + 0.5),
+        'data' => [
+            'user_id' => $testUserId,
+            'subscription_id' => (int)$subscriptionRow['id'],
+            'payment_id' => $providerPaymentId,
+            'amount_minor' => 1500,
+            'currency' => 'USD',
+        ],
+    ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $outOfOrderRefundTimestamp = (string)time();
+    $outOfOrderRefundSignature = hash_hmac('sha256', $outOfOrderRefundTimestamp . '.' . $outOfOrderRefundBody, $paymentTestSecret);
+    $outOfOrderRefund = $request('POST', '/api/v1/webhooks/payments', $outOfOrderRefundBody, '', true, [
+        'Content-Type: application/json',
+        'X-C0M-Provider: generic',
+        'X-C0M-Signature: t=' . $outOfOrderRefundTimestamp . ',v1=' . $outOfOrderRefundSignature,
+    ]);
+    httpCheck($outOfOrderRefund['status'] === 200 && str_contains($outOfOrderRefund['body'], '"status":"ignored"'),
+        'A refund older than the latest observed provider event must not be applied.');
+
     $paymentRefundEventId = 'evt-' . bin2hex(random_bytes(12));
     $paymentEventIds[] = $paymentRefundEventId;
     $paymentRefundBody = json_encode([
