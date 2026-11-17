@@ -31,17 +31,41 @@ final class AuthController
         require __DIR__ . '/../Views/register.php';
     }
 
-    public function register(): void
+    private function verifyRegistrationCsrf(): void
     {
-        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(\App\Core\t('Invalid CSRF token'));
         }
+    }
 
-        $email = strtolower(trim((string)($_POST['email'] ?? '')));
-        $display = trim((string)($_POST['display_name'] ?? ''));
-        $password = (string)($_POST['password'] ?? '');
+    private function registrationInput(): array
+    {
+        return [
+            strtolower(trim((string)($_POST['email'] ?? ''))),
+            trim((string)($_POST['display_name'] ?? '')),
+            (string)($_POST['password'] ?? ''),
+        ];
+    }
+
+    private function validRegistrationCredentials(string $email, string $password): bool
+    {
+        return filter_var($email, FILTER_VALIDATE_EMAIL)
+            && strlen($email) <= 190
+            && $this->strongPassword($password);
+    }
+
+    private function validRegistrationDisplayName(string $display): bool
+    {
+        return $display !== '' && mb_strlen($display) <= 100;
+    }
+
+    public function register(): void
+    {
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
+        $this->verifyRegistrationCsrf();
+
+        [$email, $display, $password] = $this->registrationInput();
         $registrationEnabled = $this->registrationEnabled();
 
         if (!$registrationEnabled) {
@@ -50,12 +74,12 @@ final class AuthController
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
-        if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190 || !$this->strongPassword($password)) {
+        if (!$this->validRegistrationCredentials($email, $password)) {
             $error = Localization::translate("Use a valid email address and a password of at least 12 characters containing upper and lower case letters and a number.");
             require BASE_PATH . '/app/Views/register.php';
             return;
         }
-        if ($display === '' || mb_strlen($display) > 100) {
+        if (!$this->validRegistrationDisplayName($display)) {
             $error = Localization::translate("Enter a display name of up to 100 characters.");
             require BASE_PATH . '/app/Views/register.php';
             return;

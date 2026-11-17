@@ -202,25 +202,40 @@ final class ApplicationRegistryController
 
     private function validationError(array $form): ?string
     {
+        $error = null;
         if ($form['access_level'] === 'restricted' && $form['group_ids'] === []) {
-            return \App\Core\t('Select active member groups for this application.');
+            $error = \App\Core\t('Select active member groups for this application.');
+        } elseif ($this->hasInvalidApplicationDetails($form)
+            || $this->hasInvalidApplicationUrlsAndMetadata($form)
+            || $this->hasInvalidApplicationAccess($form)) {
+            $error = \App\Core\t('Check the application details and use a valid HTTPS URL.');
         }
-        if ($form['id'] < 0
+        return $error;
+    }
+
+    private function hasInvalidApplicationDetails(array $form): bool
+    {
+        return $form['id'] < 0
             || !preg_match('/\A[a-z0-9][a-z0-9._-]{0,79}\z/D', $form['app_key'])
             || $form['name'] === '' || mb_strlen($form['name']) > 120
-            || mb_strlen($form['description']) > 10000
-            || mb_strlen($form['url']) > 500
+            || mb_strlen($form['description']) > 10000;
+    }
+
+    private function hasInvalidApplicationUrlsAndMetadata(array $form): bool
+    {
+        return mb_strlen($form['url']) > 500
             || !$this->isHttpsUrl($form['url'])
             || mb_strlen($form['icon_path']) > 255
             || mb_strlen($form['category']) > 80
             || mb_strlen($form['version']) > 40
-            || !$this->validIconPath($form['icon_path'])
-            || !in_array($form['status'], ['active', 'maintenance', 'disabled'], true)
+            || !$this->validIconPath($form['icon_path']);
+    }
+
+    private function hasInvalidApplicationAccess(array $form): bool
+    {
+        return !in_array($form['status'], ['active', 'maintenance', 'disabled'], true)
             || !in_array($form['access_level'], ['public', 'members', 'restricted'], true)
-            || in_array(-1, $form['group_ids'], true)) {
-            return \App\Core\t('Check the application details and use a valid HTTPS URL.');
-        }
-        return null;
+            || in_array(-1, $form['group_ids'], true);
     }
 
     private function isHttpsUrl(string $url): bool

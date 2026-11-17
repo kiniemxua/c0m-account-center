@@ -323,7 +323,7 @@ final class OAuthController
         }
     }
 
-    private function validateAuthorizationRequest(array $input): ?array
+    private function authorizationRequestValues(array $input): array
     {
         $clientId = is_string($input['client_id'] ?? null) ? $input['client_id'] : '';
         $redirect = is_string($input['redirect_uri'] ?? null) ? $input['redirect_uri'] : '';
@@ -333,19 +333,45 @@ final class OAuthController
         $state = is_string($input['state'] ?? null) ? $input['state'] : '';
         $nonce = is_string($input['nonce'] ?? null) ? $input['nonce'] : null;
         $requestedScopes = is_string($input['scope'] ?? null) ? preg_split('/\s+/', trim($input['scope']), -1, PREG_SPLIT_NO_EMPTY) : [];
+        return [$clientId, $redirect, $responseType, $challenge, $method, $state, $nonce, $requestedScopes];
+    }
+
+    private function isValidAuthorizationState(string $state): bool
+    {
+        return $state !== '' && strlen($state) <= 512 && !preg_match('/[\x00-\x20\x7f]/', $state);
+    }
+
+    private function isValidAuthorizationNonce(?string $nonce): bool
+    {
+        return $nonce === null || (strlen($nonce) <= 255 && !preg_match('/[\x00-\x1f\x7f]/', $nonce));
+    }
+
+    private function isValidAuthorizationParameters($client, string $responseType, string $method, string $challenge, string $state, ?string $nonce): bool
+    {
+        return $client && $responseType === 'code' && $method === 'S256'
+            && preg_match('/\A[A-Za-z0-9_-]{43}\z/D', $challenge) === 1
+            && $this->isValidAuthorizationState($state)
+            && $this->isValidAuthorizationNonce($nonce);
+    }
+
+    private function isValidAuthorizationClientSettings($client, string $redirect, $requestedScopes): bool
+    {
+        $redirects = json_decode((string)$client['redirect_uris'], true);
+        $allowed = json_decode((string)$client['allowed_scopes'], true);
+        return is_array($redirects) && OAuthService::validRedirectUri($redirects, $redirect)
+            && is_array($allowed) && $requestedScopes !== [] && array_diff($requestedScopes, $allowed) === [];
+    }
+
+    private function validateAuthorizationRequest(array $input): ?array
+    {
+        [$clientId, $redirect, $responseType, $challenge, $method, $state, $nonce, $requestedScopes] = $this->authorizationRequestValues($input);
         $client = $this->clientById($clientId);
-        if (!$client || $responseType !== 'code' || $method !== 'S256'
-            || preg_match('/\A[A-Za-z0-9_-]{43}\z/D', $challenge) !== 1
-            || $state === '' || strlen($state) > 512 || preg_match('/[\x00-\x20\x7f]/', $state)
-            || ($nonce !== null && (strlen($nonce) > 255 || preg_match('/[\x00-\x1f\x7f]/', $nonce)))) {
+        if (!$this->isValidAuthorizationParameters($client, $responseType, $method, $challenge, $state, $nonce)) {
             http_response_code(400);
             echo \App\Core\t('The authorization request is invalid.');
             return null;
         }
-        $redirects = json_decode((string)$client['redirect_uris'], true);
-        $allowed = json_decode((string)$client['allowed_scopes'], true);
-        if (!is_array($redirects) || !OAuthService::validRedirectUri($redirects, $redirect)
-            || !is_array($allowed) || $requestedScopes === [] || array_diff($requestedScopes, $allowed) !== []) {
+        if (!$this->isValidAuthorizationClientSettings($client, $redirect, $requestedScopes)) {
             http_response_code(400);
             echo \App\Core\t('The authorization request is invalid.');
             return null;
@@ -600,20 +626,36 @@ final class OAuthController
         header('Access-Control-Max-Age: 600');
     }
 
+    private function isValidCorsOriginParts($parts): bool
+    {
+        $valid = false;
+        if (is_array($parts)) {
+            $hasHttpsScheme = strtolower((string)($parts['scheme'] ?? '')) === 'https';
+            $hasHost = !empty($parts['host']);
+            $hasCredentials = isset($parts['user']) || isset($parts['pass']);
+            $hasExtraComponents = isset($parts['query']) || isset($parts['fragment']);
+            $hasPath = isset($parts['path']) && $parts['path'] !== '';
+            $valid = $hasHttpsScheme && $hasHost && !$hasCredentials && !$hasExtraComponents && !$hasPath;
+        }
+        return $valid;
+    }
+
+    private static function normalizeCorsOriginParts(array $parts): string
+    {
+        $scheme = strtolower((string)($parts['scheme'] ?? ''));
+        $host = strtolower((string)($parts['host'] ?? ''));
+        $port = isset($parts['port']) ? (int)$parts['port'] : 443;
+        return $scheme . '://' . $host . ($port === 443 ? '' : ':' . $port);
+    }
+
     private function originIsRegistered(string $origin): bool
     {
         $originParts = parse_url($origin);
-        if (!is_array($originParts) || strtolower((string)($originParts['scheme'] ?? '')) !== 'https'
-            || empty($originParts['host']) || isset($originParts['user']) || isset($originParts['pass'])
-            || isset($originParts['query']) || isset($originParts['fragment'])
-            || (isset($originParts['path']) && $originParts['path'] !== '')) {
+        if (!$this->isValidCorsOriginParts($originParts)) {
             return false;
         }
         $normalize = static function (array $parts): string {
-            $scheme = strtolower((string)($parts['scheme'] ?? ''));
-            $host = strtolower((string)($parts['host'] ?? ''));
-            $port = isset($parts['port']) ? (int)$parts['port'] : 443;
-            return $scheme . '://' . $host . ($port === 443 ? '' : ':' . $port);
+            return self::normalizeCorsOriginParts($parts);
         };
         $candidate = $normalize($originParts);
         $stmt = Database::connection()->query(

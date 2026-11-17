@@ -79,6 +79,18 @@ final class OAuthService
         return $code;
     }
 
+    private static function isExchangeAuthorizationCodeInputInvalid(string $code, string $verifier): bool
+    {
+        return $code === '' || strlen($code) > 128 || !self::validVerifier($verifier);
+    }
+
+    private static function isExchangeAuthorizationCodeRowInvalid($row, string $redirectUri): bool
+    {
+        return !$row || $row['consumed_at'] !== null || strtotime((string)$row['expires_at'] . ' UTC') <= time()
+            || $row['user_status'] !== 'active' || $row['client_status'] !== 'active'
+            || !hash_equals((string)$row['redirect_uri'], $redirectUri);
+    }
+
     /**
      * Redeem a one-time code. The client must already have been authenticated
      * by the token endpoint. A conditional consume prevents concurrent replay.
@@ -90,7 +102,7 @@ final class OAuthService
         string $redirectUri,
         string $verifier
     ): ?array {
-        if ($code === '' || strlen($code) > 128 || !self::validVerifier($verifier)) {
+        if (self::isExchangeAuthorizationCodeInputInvalid($code, $verifier)) {
             return null;
         }
         $pdo->beginTransaction();
@@ -105,9 +117,7 @@ final class OAuthService
             );
             $stmt->execute(['hash' => hash('sha256', $code), 'client_id' => (int)$client['id']]);
             $row = $stmt->fetch();
-            if (!$row || $row['consumed_at'] !== null || strtotime((string)$row['expires_at'] . ' UTC') <= time()
-                || $row['user_status'] !== 'active' || $row['client_status'] !== 'active'
-                || !hash_equals((string)$row['redirect_uri'], $redirectUri)) {
+            if (self::isExchangeAuthorizationCodeRowInvalid($row, $redirectUri)) {
                 $pdo->rollBack();
                 return null;
             }
