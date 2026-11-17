@@ -11,17 +11,25 @@ final class UserRoleManager
 {
     private const ALLOWED_ROLES = ['super_admin', 'admin', 'member'];
 
-    public static function replace(PDO $pdo, int $userId, array $roleKeys): array
+    private static function validateReplacementRequest(int $userId, array $roleKeys): void
     {
         if ($userId < 1 || $roleKeys === []) {
             throw new RuntimeException('At least one role is required.');
         }
+    }
+    private static function validateRoleKey($roleKey): void
+    {
+        if (!is_string($roleKey) || !in_array($roleKey, self::ALLOWED_ROLES, true)) {
+            throw new RuntimeException('Invalid role assignment.');
+        }
+    }
+    public static function replace(PDO $pdo, int $userId, array $roleKeys): array
+    {
+        self::validateReplacementRequest($userId, $roleKeys);
 
         $normalized = [];
         foreach ($roleKeys as $roleKey) {
-            if (!is_string($roleKey) || !in_array($roleKey, self::ALLOWED_ROLES, true)) {
-                throw new RuntimeException('Invalid role assignment.');
-            }
+            self::validateRoleKey($roleKey);
             $normalized[] = $roleKey;
         }
         $normalized = array_values(array_unique($normalized));

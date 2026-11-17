@@ -33,6 +33,32 @@ final class MemberGroupController
         }
         require BASE_PATH . '/app/Views/admin-groups.php';
     }
+    private function postString(string $field): string
+    {
+        return is_string($_POST[$field] ?? null) ? trim($_POST[$field]) : '';
+    }
+    private function validGroupData(string $key, string $name, string $description): bool
+    {
+        return (bool)preg_match('/\A[a-z0-9][a-z0-9._-]{0,79}\z/D', $key)
+            && $name !== '' && mb_strlen($name) <= 120 && mb_strlen($description) <= 2000;
+    }
+    private function createGroup($pdo, $actorId): bool
+    {
+        $key = $this->postString('group_key');
+        $name = $this->postString('name');
+        $description = $this->postString('description');
+        $valid = $this->validGroupData($key, $name, $description);
+        if (!$valid) {
+            http_response_code(422);
+            $this->renderWithError(\App\Core\t('Check the group key, name and description.'));
+        } else {
+            $pdo->beginTransaction();
+            $groupId = GroupManager::create($pdo, $key, $name, $description);
+            Authorization::audit($actorId, 'group.created', 'group', (string)$groupId, ['group_key' => $key]);
+            $pdo->commit();
+        }
+        return $valid;
+    }
 
     public function save(): void
     {
@@ -46,19 +72,9 @@ final class MemberGroupController
 
         try {
             if ($action === 'create') {
-                $key = is_string($_POST['group_key'] ?? null) ? trim($_POST['group_key']) : '';
-                $name = is_string($_POST['name'] ?? null) ? trim($_POST['name']) : '';
-                $description = is_string($_POST['description'] ?? null) ? trim($_POST['description']) : '';
-                if (!preg_match('/\A[a-z0-9][a-z0-9._-]{0,79}\z/D', $key)
-                    || $name === '' || mb_strlen($name) > 120 || mb_strlen($description) > 2000) {
-                    http_response_code(422);
-                    $this->renderWithError(\App\Core\t('Check the group key, name and description.'));
+                if (!$this->createGroup($pdo, $actorId)) {
                     return;
                 }
-                $pdo->beginTransaction();
-                $groupId = GroupManager::create($pdo, $key, $name, $description);
-                Authorization::audit($actorId, 'group.created', 'group', (string)$groupId, ['group_key' => $key]);
-                $pdo->commit();
             } elseif ($action === 'update') {
                 $groupId = filter_var($_POST['group_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
                 $name = is_string($_POST['name'] ?? null) ? trim($_POST['name']) : '';

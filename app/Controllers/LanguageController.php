@@ -9,18 +9,22 @@ use Throwable;
 
 final class LanguageController
 {
-    public function switch(): void
+    private function verifyLanguageCsrf(): void
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(Localization::translate('Invalid CSRF token'));
         }
-        $locale = (string)($_POST['language'] ?? '');
+    }
+    private function verifySupportedLanguage(string $locale): void
+    {
         if (!in_array($locale, ['vi', 'en'], true)) {
             http_response_code(422);
             exit(Localization::translate('Please choose a supported language.'));
         }
-        $userId = (int)($_SESSION['user_id'] ?? 0);
+    }
+    private function persistLanguagePreference(string $locale, int $userId): void
+    {
         if ($userId > 0) {
             try {
                 $stmt = Database::connection()->prepare('INSERT INTO user_profiles (user_id, language) VALUES (:id, :language) ON DUPLICATE KEY UPDATE language = VALUES(language)');
@@ -35,6 +39,14 @@ final class LanguageController
         } else {
             Localization::persistGuest($locale);
         }
+    }
+    public function switch(): void
+    {
+        $this->verifyLanguageCsrf();
+        $locale = (string)($_POST['language'] ?? '');
+        $this->verifySupportedLanguage($locale);
+        $userId = (int)($_SESSION['user_id'] ?? 0);
+        $this->persistLanguagePreference($locale, $userId);
         $return = (string)($_POST['return_to'] ?? '/');
         // Reject raw control bytes before parsing: URL parsers may normalize them.
         $rawUnsafe = $return === ''

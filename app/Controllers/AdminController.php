@@ -36,19 +36,33 @@ final class AdminController
         require BASE_PATH . '/app/Views/admin-users.php';
     }
 
-    public function updateStatus(): void
+    private function verifyStatusUpdateCsrf(): void
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(\App\Core\t('Invalid CSRF token'));
         }
-        $actorId = Authorization::requirePermission('users.manage');
-        $targetId = (int)($_POST['user_id'] ?? 0);
-        $status = (string)($_POST['status'] ?? '');
+    }
+    private function validateStatusUpdate(int $targetId, string $status): void
+    {
         if ($targetId < 1 || !in_array($status, ['active', 'suspended', 'banned', 'pending'], true)) {
             http_response_code(400);
             exit(\App\Core\t('Invalid user status.'));
         }
+    }
+    private function verifyStatusUpdateActor($actorStatus, int $actorId): void
+    {
+        if ($actorStatus !== 'active' || !Authorization::hasPermission($actorId, 'users.manage')) {
+            throw new \RuntimeException('actor_permission_revoked');
+        }
+    }
+    public function updateStatus(): void
+    {
+        $this->verifyStatusUpdateCsrf();
+        $actorId = Authorization::requirePermission('users.manage');
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $status = (string)($_POST['status'] ?? '');
+        $this->validateStatusUpdate($targetId, $status);
 
         $pdo = Database::connection();
         $pdo->beginTransaction();
@@ -59,9 +73,7 @@ final class AdminController
 
             $actor = $pdo->prepare('SELECT status FROM users WHERE id = :id FOR UPDATE');
             $actor->execute(['id' => $actorId]);
-            if ($actor->fetchColumn() !== 'active' || !Authorization::hasPermission($actorId, 'users.manage')) {
-                throw new \RuntimeException('actor_permission_revoked');
-            }
+            $this->verifyStatusUpdateActor($actor->fetchColumn(), $actorId);
             $target = $pdo->prepare('SELECT id, status FROM users WHERE id = :id FOR UPDATE');
             $target->execute(['id' => $targetId]);
             $targetRow = $target->fetch();
@@ -122,7 +134,7 @@ final class AdminController
         header('Location: /admin/users', true, 303);
     }
 
-    public function assignRole(): void
+    private function validateRoleAssignmentActor(): int
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
@@ -133,8 +145,10 @@ final class AdminController
             http_response_code(403);
             exit(\App\Core\t('Only a super administrator may assign roles.'));
         }
-        $targetId = (int)($_POST['user_id'] ?? 0);
-        $submittedRoles = $_POST['roles'] ?? (isset($_POST['role']) ? [$_POST['role']] : []);
+        return $actorId;
+    }
+    private function validateSubmittedRoleKeys($submittedRoles): array
+    {
         if (!is_array($submittedRoles)) {
             http_response_code(400);
             exit(\App\Core\t('Invalid role assignment.'));
@@ -147,7 +161,14 @@ final class AdminController
             }
             $roleKeys[] = $role;
         }
-        $roleKeys = array_values(array_unique($roleKeys));
+        return array_values(array_unique($roleKeys));
+    }
+    public function assignRole(): void
+    {
+        $actorId = $this->validateRoleAssignmentActor();
+        $targetId = (int)($_POST['user_id'] ?? 0);
+        $submittedRoles = $_POST['roles'] ?? (isset($_POST['role']) ? [$_POST['role']] : []);
+        $roleKeys = $this->validateSubmittedRoleKeys($submittedRoles);
         if ($targetId < 1 || $roleKeys === []) {
             http_response_code(400);
             exit(\App\Core\t('Select at least one valid role.'));

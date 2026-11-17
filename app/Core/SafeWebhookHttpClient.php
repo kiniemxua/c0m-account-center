@@ -7,14 +7,7 @@ use RuntimeException;
 
 final class SafeWebhookHttpClient
 {
-    /**
-     * Validate the URL and resolve every address before a connection is made.
-     * The returned address is pinned with CURLOPT_RESOLVE to prevent a second
-     * DNS lookup from redirecting the request to a private network.
-     *
-     * @return array{url:string,host:string,ip:string}
-     */
-    public static function resolvePublicTarget(string $url): array
+    private static function parseTargetUrl(string $url): array
     {
         if (strlen($url) > 500 || filter_var($url, FILTER_VALIDATE_URL) === false) {
             throw new RuntimeException('invalid_endpoint');
@@ -25,13 +18,29 @@ final class SafeWebhookHttpClient
             || isset($parts['fragment']) || (isset($parts['port']) && (int)$parts['port'] !== 443)) {
             throw new RuntimeException('invalid_endpoint');
         }
-
-        $rawHost = trim((string)$parts['host'], '[]');
+        return $parts;
+    }
+    private static function normalizeTargetHost(string $rawHost): string
+    {
+        $rawHost = trim($rawHost, '[]');
         if ($rawHost === '' || str_ends_with($rawHost, '.')) throw new RuntimeException('invalid_endpoint');
         $host = strtolower($rawHost);
         if ($host === '' || preg_match('/[\x00-\x20\x7f]/', $host)) {
             throw new RuntimeException('invalid_endpoint');
         }
+        return $host;
+    }
+    /**
+     * Validate the URL and resolve every address before a connection is made.
+     * The returned address is pinned with CURLOPT_RESOLVE to prevent a second
+     * DNS lookup from redirecting the request to a private network.
+     *
+     * @return array{url:string,host:string,ip:string}
+     */
+    public static function resolvePublicTarget(string $url): array
+    {
+        $parts = self::parseTargetUrl($url);
+        $host = self::normalizeTargetHost((string)$parts['host']);
 
         if (filter_var($host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
             // IPv6 literal authorities require a different CURLOPT_RESOLVE

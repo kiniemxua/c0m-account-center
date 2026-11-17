@@ -19,23 +19,39 @@ final class SmtpMailer implements MailProviderInterface
         self::deliver($this->config, $to, $subject, $text, $html);
     }
 
-    private static function deliver(array $config, string $to, string $subject, string $text, string $html): void
+    private static function readConfiguration(array $config): array
     {
         $host = (string)($config['host'] ?? '');
-        $port = (int)($config['port'] ?? 587);
-        $encryption = (string)($config['encryption'] ?? 'tls');
-        $username = (string)($config['username'] ?? '');
-        $password = (string)($config['password'] ?? '');
-        $from = (string)($config['from_email'] ?? '');
-        $fromName = (string)($config['from_name'] ?? 'c0m.me Account Center');
-        $tlsPeerName = (string)($config['tls_peer_name'] ?? $host);
-        $caFile = (string)($config['ca_file'] ?? '');
-        $timeout = max(5, min(30, (int)($config['timeout'] ?? 15)));
+        return [
+            $host,
+            (int)($config['port'] ?? 587),
+            (string)($config['encryption'] ?? 'tls'),
+            (string)($config['username'] ?? ''),
+            (string)($config['password'] ?? ''),
+            (string)($config['from_email'] ?? ''),
+            (string)($config['from_name'] ?? 'c0m.me Account Center'),
+            (string)($config['tls_peer_name'] ?? $host),
+            (string)($config['ca_file'] ?? ''),
+            max(5, min(30, (int)($config['timeout'] ?? 15))),
+        ];
+    }
 
-        if ($host === '' || $port < 1 || $port > 65535 || !filter_var($from, FILTER_VALIDATE_EMAIL)
-            || $tlsPeerName === '' || preg_match('/[\r\n]/', $host . $username . $fromName . $tlsPeerName)
-            || ($caFile !== '' && (!is_file($caFile) || !is_readable($caFile)))
-            || !in_array($encryption, ['tls', 'ssl', 'none'], true)) {
+    private static function hasInvalidConnectionConfiguration(string $host, int $port, string $username, string $from, string $fromName, string $tlsPeerName): bool
+    {
+        return $host === '' || $port < 1 || $port > 65535 || !filter_var($from, FILTER_VALIDATE_EMAIL)
+            || $tlsPeerName === '' || preg_match('/[\r\n]/', $host . $username . $fromName . $tlsPeerName);
+    }
+
+    private static function hasInvalidSecurityConfiguration(string $caFile, string $encryption): bool
+    {
+        return ($caFile !== '' && (!is_file($caFile) || !is_readable($caFile)))
+            || !in_array($encryption, ['tls', 'ssl', 'none'], true);
+    }
+
+    private static function validateConfiguration(string $host, int $port, string $encryption, string $username, string $password, string $from, string $fromName, string $tlsPeerName, string $caFile): void
+    {
+        if (self::hasInvalidConnectionConfiguration($host, $port, $username, $from, $fromName, $tlsPeerName)
+            || self::hasInvalidSecurityConfiguration($caFile, $encryption)) {
             throw new RuntimeException('SMTP configuration is invalid.');
         }
 
@@ -45,6 +61,13 @@ final class SmtpMailer implements MailProviderInterface
         if ($encryption === 'none' && $username !== '') {
             throw new RuntimeException('SMTP authentication requires TLS or implicit SSL.');
         }
+    }
+
+    private static function deliver(array $config, string $to, string $subject, string $text, string $html): void
+    {
+        [$host, $port, $encryption, $username, $password, $from, $fromName, $tlsPeerName, $caFile, $timeout] = self::readConfiguration($config);
+
+        self::validateConfiguration($host, $port, $encryption, $username, $password, $from, $fromName, $tlsPeerName, $caFile);
 
         $scheme = $encryption === 'ssl' ? 'ssl://' : 'tcp://';
         $sslOptions = [

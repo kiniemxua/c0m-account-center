@@ -10,29 +10,41 @@ final class SubscriptionService
 {
     public static function applyProviderSubscription(PDO $pdo, string $provider, string $eventType, array $data): array
     {
-        $userId = filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
-        $planKey = is_string($data['plan_key'] ?? null) ? $data['plan_key'] : '';
-        $providerSubscriptionId = is_string($data['provider_subscription_id'] ?? null)
-            ? trim($data['provider_subscription_id']) : '';
-        if ($userId === false || $planKey === '' || strlen($planKey) > 80
-            || $providerSubscriptionId === '' || strlen($providerSubscriptionId) > 190) {
-            throw new RuntimeException('invalid_subscription_event');
-        }
-        $user = $pdo->prepare("SELECT id FROM users WHERE id = :id AND status = 'active' LIMIT 1");
-        $user->execute(['id' => $userId]);
-        if ($user->fetchColumn() === false) throw new RuntimeException('subscription_user_unavailable');
+        [$userId, $planKey, $providerSubscriptionId] = (static function (array $data): array {
+            $userId = filter_var($data['user_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
+            $planKey = is_string($data['plan_key'] ?? null) ? $data['plan_key'] : '';
+            $providerSubscriptionId = is_string($data['provider_subscription_id'] ?? null)
+                ? trim($data['provider_subscription_id']) : '';
+            if ($userId === false || $planKey === '' || strlen($planKey) > 80
+                || $providerSubscriptionId === '' || strlen($providerSubscriptionId) > 190) {
+                throw new RuntimeException('invalid_subscription_event');
+            }
+            return [$userId, $planKey, $providerSubscriptionId];
+        })($data);
+        $user = (static function (PDO $pdo, $userId) {
+            $user = $pdo->prepare("SELECT id FROM users WHERE id = :id AND status = 'active' LIMIT 1");
+            $user->execute(['id' => $userId]);
+            if ($user->fetchColumn() === false) throw new RuntimeException('subscription_user_unavailable');
+            return $user;
+        })($pdo, $userId);
 
-        $plan = $pdo->prepare("SELECT id FROM subscription_plans WHERE plan_key = :key AND status = 'active' LIMIT 1");
-        $plan->execute(['key' => $planKey]);
-        $planId = $plan->fetchColumn();
-        if ($planId === false) throw new RuntimeException('subscription_plan_unavailable');
+        [$plan, $planId] = (static function (PDO $pdo, string $planKey): array {
+            $plan = $pdo->prepare("SELECT id FROM subscription_plans WHERE plan_key = :key AND status = 'active' LIMIT 1");
+            $plan->execute(['key' => $planKey]);
+            $planId = $plan->fetchColumn();
+            if ($planId === false) throw new RuntimeException('subscription_plan_unavailable');
+            return [$plan, $planId];
+        })($pdo, $planKey);
 
-        $status = is_string($data['status'] ?? null) ? $data['status'] : '';
-        if ($eventType === 'subscription.canceled') $status = 'canceled';
-        if ($status === '') $status = 'active';
-        if (!in_array($status, ['pending', 'trialing', 'active', 'past_due', 'canceled', 'expired'], true)) {
-            throw new RuntimeException('invalid_subscription_status');
-        }
+        $status = (static function (string $eventType, array $data): string {
+            $status = is_string($data['status'] ?? null) ? $data['status'] : '';
+            if ($eventType === 'subscription.canceled') $status = 'canceled';
+            if ($status === '') $status = 'active';
+            if (!in_array($status, ['pending', 'trialing', 'active', 'past_due', 'canceled', 'expired'], true)) {
+                throw new RuntimeException('invalid_subscription_status');
+            }
+            return $status;
+        })($eventType, $data);
 
         $periodStart = self::dateValue($data['current_period_start'] ?? null);
         $periodEnd = self::dateValue($data['current_period_end'] ?? null);

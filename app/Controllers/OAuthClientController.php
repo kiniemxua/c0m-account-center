@@ -22,28 +22,43 @@ final class OAuthClientController
         $this->render(null, is_array($flash) ? $flash : null);
     }
 
-    public function create(): void
+    private function verifyCreateCsrf(): void
     {
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(\App\Core\t('Invalid CSRF token'));
         }
+    }
+
+    private function hasInvalidClientDetails($applicationId, string $type, array $redirects, $rawScopes): bool
+    {
+        return $applicationId === false || !in_array($type, ['public', 'confidential'], true)
+            || $redirects === [] || !is_array($rawScopes)
+            || array_filter($rawScopes, static fn($scope): bool => !is_string($scope)) !== [];
+    }
+
+    private function supportedScopes(array $rawScopes): array
+    {
+        return array_values(array_unique(array_filter($rawScopes, static fn($scope): bool =>
+            is_string($scope) && in_array($scope, self::SCOPES, true)
+        )));
+    }
+
+    public function create(): void
+    {
+        $this->verifyCreateCsrf();
         $actorId = Authorization::requirePermission('apps.manage');
         $applicationId = filter_var($_POST['application_id'] ?? null, FILTER_VALIDATE_INT, ['options' => ['min_range' => 1]]);
         $type = is_string($_POST['client_type'] ?? null) ? $_POST['client_type'] : '';
         $redirectText = is_string($_POST['redirect_uris'] ?? null) ? trim($_POST['redirect_uris']) : '';
         $redirects = preg_split('/\R+/', $redirectText, -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $rawScopes = $_POST['scopes'] ?? [];
-        if ($applicationId === false || !in_array($type, ['public', 'confidential'], true)
-            || $redirects === [] || !is_array($rawScopes)
-            || array_filter($rawScopes, static fn($scope): bool => !is_string($scope)) !== []) {
+        if ($this->hasInvalidClientDetails($applicationId, $type, $redirects, $rawScopes)) {
             http_response_code(422);
             $this->render(\App\Core\t('Check the OAuth client details.'), null);
             return;
         }
-        $scopes = array_values(array_unique(array_filter($rawScopes, static fn($scope): bool =>
-            is_string($scope) && in_array($scope, self::SCOPES, true)
-        )));
+        $scopes = $this->supportedScopes($rawScopes);
         if ($scopes === []) {
             http_response_code(422);
             $this->render(\App\Core\t('Select one or more supported OAuth scopes.'), null);
