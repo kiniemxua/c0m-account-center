@@ -34,6 +34,9 @@ final class AccountController
         }
         $saved = isset($_GET['saved']) && $_GET['saved'] === '1';
         $error = null;
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/account.php';
     }
 
@@ -236,6 +239,9 @@ final class AccountController
         $stmt->execute(['id' => $userId]);
         $account = $stmt->fetch();
         $saved = false;
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/account.php';
     }
 

@@ -28,6 +28,9 @@ final class MemberGroupController
         unset($group);
         $users = $pdo->query("SELECT id, email, display_name FROM users WHERE status = 'active' ORDER BY email LIMIT 500")->fetchAll();
         $error = null;
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/admin-groups.php';
     }
 
@@ -171,6 +174,7 @@ final class MemberGroupController
         }
         unset($group);
         $users = $pdo->query("SELECT id, email, display_name FROM users WHERE status = 'active' ORDER BY email LIMIT 500")->fetchAll();
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         require BASE_PATH . '/app/Views/admin-groups.php';
     }
 }

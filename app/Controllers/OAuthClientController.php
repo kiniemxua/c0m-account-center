@@ -247,6 +247,9 @@ final class OAuthClientController
              ORDER BY a.name, a.id LIMIT 200"
         )->fetchAll();
         $scopes = self::SCOPES;
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/admin-oauth-clients.php';
     }
 }

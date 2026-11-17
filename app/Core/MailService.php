@@ -9,7 +9,7 @@ final class MailService
 {
     public static function send(string $to, string $subject, string $text, string $html = ''): void
     {
-        $configPath = BASE_PATH . '/config/mail.php';
+        $configPath = dirname(__DIR__, 2) . '/config/mail.php';
         if (!is_file($configPath)) {
             throw new RuntimeException('Mail service is not configured.');
         }

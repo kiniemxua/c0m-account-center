@@ -30,6 +30,9 @@ final class AdminController
         $canManage = Authorization::hasPermission((int)$_SESSION['user_id'], 'users.manage');
         $canAssignRoles = Authorization::isSuperAdmin((int)$_SESSION['user_id']);
         $canViewAudit = Authorization::hasPermission((int)$_SESSION['user_id'], 'audit.view');
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/admin-users.php';
     }
 
@@ -220,6 +223,9 @@ final class AdminController
             $event['ip_display'] = $event['ip_address'] !== null ? (inet_ntop($event['ip_address']) ?: 'Unknown') : 'Unknown';
         }
         unset($event);
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/admin-audit.php';
     }
 
@@ -247,6 +253,9 @@ final class AdminController
         $enabled = $pdo->query(
             "SELECT setting_value FROM app_settings WHERE setting_key = 'registration_enabled'"
         )->fetchColumn() === '1';
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/admin-settings.php';
     }
 }

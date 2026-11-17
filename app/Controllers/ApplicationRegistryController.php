@@ -129,7 +129,7 @@ final class ApplicationRegistryController
              FROM applications ORDER BY updated_at DESC, id DESC LIMIT 200'
         )->fetchAll();
         $groups = Database::connection()->query("SELECT id, group_key, name FROM member_groups WHERE status = 'active' ORDER BY name, id")->fetchAll();
-        require BASE_PATH . '/app/Views/admin-applications.php';
+        require __DIR__ . '/../Views/admin-applications.php';
     }
 
     private function emptyForm(): array

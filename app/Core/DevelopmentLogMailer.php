@@ -9,6 +9,9 @@ final class DevelopmentLogMailer implements MailProviderInterface
 {
     public function send(string $to, string $subject, string $text, string $html = ''): void
     {
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         $storage = BASE_PATH . '/storage';
         if (!is_dir($storage) && !mkdir($storage, 0750, true) && !is_dir($storage)) {
             throw new RuntimeException('Development mail log is unavailable.');

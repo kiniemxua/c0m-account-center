@@ -154,7 +154,7 @@ final class SubscriptionPlanController
              FROM subscription_plans p
              ORDER BY p.sort_order, p.price_minor, p.id"
         )->fetchAll();
-        require BASE_PATH . '/app/Views/admin-plans.php';
+        require __DIR__ . '/../Views/admin-plans.php';
     }
 
     private function emptyForm(): array

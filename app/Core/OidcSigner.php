@@ -15,6 +15,7 @@ final class OidcSigner
     private static function load(): void
     {
         if (self::$privateKey instanceof OpenSSLAsymmetricKey) return;
+        if (!defined('BASE_PATH')) define('BASE_PATH', dirname(__DIR__, 2));
         $directory = BASE_PATH . '/storage';
         if (!is_dir($directory) && !mkdir($directory, 0750, true) && !is_dir($directory)) {
             throw new RuntimeException('OIDC signing storage is unavailable.');
@@ -74,6 +75,9 @@ final class OidcSigner
     {
         self::load();
         $keys = [self::jwkFromDetails(self::$details, (string)self::$keyId)];
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         $previousDirectory = BASE_PATH . '/storage/oauth-signing-previous';
         if (is_dir($previousDirectory)) {
             $minimumCreatedAt = time() - 86400;

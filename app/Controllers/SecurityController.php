@@ -31,6 +31,9 @@ final class SecurityController
             $row['user_agent'] = substr((string)$row['user_agent'], 0, 250);
             $sessions[] = $row;
         }
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/sessions.php';
     }
 
@@ -98,6 +101,9 @@ final class SecurityController
             $row['user_agent'] = substr((string)$row['user_agent'], 0, 250);
         }
         unset($row);
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/login-history.php';
     }
 
