@@ -18,19 +18,22 @@ final class AuthController
 {
     public function showLogin(): void
     {
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         $error = null;
         require BASE_PATH . '/app/Views/login.php';
     }
 
     public function showRegister(): void
     {
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         $registrationEnabled = $this->registrationEnabled();
         $error = null;
-        require BASE_PATH . '/app/Views/register.php';
+        require __DIR__ . '/../Views/register.php';
     }
 
     public function register(): void
     {
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(\App\Core\t('Invalid CSRF token'));
@@ -126,6 +129,7 @@ final class AuthController
 
     public function verifyEmailForm(): void
     {
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         header('Cache-Control: no-store, private');
         header('Referrer-Policy: no-referrer');
         $token = trim((string)($_GET['token'] ?? ''));
@@ -144,6 +148,7 @@ final class AuthController
 
     public function verifyEmail(): void
     {
+        defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(\App\Core\t('Invalid CSRF token'));
@@ -211,13 +216,13 @@ final class AuthController
             }
         }
         $message = Localization::translate("If this address has a pending account, a new verification email will be sent shortly.");
-        require BASE_PATH . '/app/Views/register-result.php';
+        require dirname(__DIR__, 2) . '/app/Views/register-result.php';
     }
 
     public function showForgotPassword(): void
     {
         $error = null;
-        require BASE_PATH . '/app/Views/forgot-password.php';
+        require dirname(__DIR__) . '/Views/forgot-password.php';
     }
 
     public function forgotPassword(): void
@@ -245,6 +250,9 @@ final class AuthController
             }
         }
         $message = Localization::translate("If an active account matches that address, password reset instructions will be sent shortly.");
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/password-reset-result.php';
     }
 
@@ -263,7 +271,7 @@ final class AuthController
             $stmt->execute(['token_hash' => hash('sha256', $token)]);
             $valid = $stmt->fetchColumn() !== false;
         }
-        require BASE_PATH . '/app/Views/reset-password.php';
+        require dirname(__DIR__, 2) . '/app/Views/reset-password.php';
     }
 
     public function resetPassword(): void
@@ -317,11 +325,17 @@ final class AuthController
         if ($reset && $resetUserId !== null && (int)($_SESSION['user_id'] ?? 0) === $resetUserId) {
             SessionManager::invalidate();
         }
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         require BASE_PATH . '/app/Views/password-reset-result.php';
     }
 
     public function login(): void
     {
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         if (!Csrf::verify($_POST['_csrf'] ?? null)) {
             http_response_code(419);
             exit(\App\Core\t('Invalid CSRF token'));

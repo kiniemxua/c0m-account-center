@@ -39,6 +39,9 @@ final class PaymentWebhookController
             return;
         }
 
+        if (!defined('BASE_PATH')) {
+            define('BASE_PATH', dirname(__DIR__, 2));
+        }
         $configPath = BASE_PATH . '/config/payments.php';
         if (!is_file($configPath)) {
             $this->respond(503, ['ok' => false, 'error' => 'payment_webhooks_unavailable']);

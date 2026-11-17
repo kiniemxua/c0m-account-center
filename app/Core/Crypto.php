@@ -9,7 +9,7 @@ final class Crypto
 {
     private static function key(): string
     {
-        $path = BASE_PATH . '/config/database.php';
+        $path = dirname(__DIR__, 2) . '/config/database.php';
         if (!is_file($path)) throw new RuntimeException('Application encryption key is unavailable.');
         $config = require $path;
         $appKey = is_array($config) ? ($config['app_key'] ?? null) : null;

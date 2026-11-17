@@ -5,6 +5,7 @@ namespace App\Controllers;
 use App\Core\Database;
 use App\Core\Authorization;
 
+defined('BASE_PATH') || define('BASE_PATH', dirname(__DIR__, 2));
 final class HomeController
 {
     public function index(): void { require BASE_PATH . '/app/Views/home.php'; }

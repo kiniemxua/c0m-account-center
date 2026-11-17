@@ -103,6 +103,7 @@ final class Localization
 
     private static function load(string $locale): array
     {
+        if (!defined('BASE_PATH')) define('BASE_PATH', dirname(__DIR__, 2));
         $file = BASE_PATH . '/lang/' . $locale . '.php';
         if (!is_file($file)) return [];
         $messages = require $file;
