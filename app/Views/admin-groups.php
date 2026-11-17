@@ -1,3 +1,4 @@
+<?php $error = $error ?? null; $groups = $groups ?? []; $users = $users ?? []; ?>
 <!doctype html>
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head>

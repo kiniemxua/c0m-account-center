@@ -1,6 +1,10 @@
 <?php
 declare(strict_types=1);
 
+$argv = $_SERVER['argv'] ?? [];
+if (!isset($argv[1], $argv[2])) {
+    exit(1);
+}
 $portFile = $argv[1];
 $mailFile = $argv[2];
 $server = stream_socket_server('tcp://127.0.0.1:0', $errno, $error);

@@ -1,3 +1,4 @@
+<?php $applications ??= []; $canManageApplications ??= false; $canManageGroups ??= false; $canViewAdmin ??= false; $canViewAudit ??= false; $user ??= ['display_name' => '', 'email' => '']; ?>
 <!doctype html>
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#f5f7fb"><title><?= \App\Core\t('Dashboard') ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css"></head>

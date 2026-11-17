@@ -6,6 +6,7 @@ if (PHP_SAPI !== 'cli') {
     exit;
 }
 
+$argv = $_SERVER['argv'] ?? [];
 define('BASE_PATH', dirname(__DIR__));
 $configPath = BASE_PATH . '/config/database.php';
 if (!is_file($configPath)) {

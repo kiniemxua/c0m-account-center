@@ -1,3 +1,22 @@
+<?php
+$apps ??= [];
+$error ??= null;
+$form ??= [
+    'id' => 0,
+    'app_key' => '',
+    'name' => '',
+    'description' => '',
+    'url' => '',
+    'icon_path' => '',
+    'category' => '',
+    'version' => '',
+    'status' => 'active',
+    'access_level' => 'public',
+    'group_ids' => [],
+    'featured' => '0',
+];
+$groups ??= [];
+?>
 <!doctype html>
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head>

@@ -1,3 +1,4 @@
+<?php $applications = $applications ?? []; $clients = $clients ?? []; $error = $error ?? null; $flash = $flash ?? null; $scopes = $scopes ?? []; ?>
 <!doctype html>
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head>
