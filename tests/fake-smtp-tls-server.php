@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+$argv = $_SERVER['argv'] ?? [];
 $portFile = $argv[1];
 $certFile = $argv[2];
 $keyFile = $argv[3];

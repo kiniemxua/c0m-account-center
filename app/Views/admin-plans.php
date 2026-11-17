@@ -1,4 +1,9 @@
 <!doctype html>
+<?php
+$error ??= null;
+$form ??= ['id' => 0, 'plan_key' => '', 'name' => '', 'description' => '', 'price_minor' => '0', 'currency' => '', 'billing_interval' => 'none', 'sort_order' => '0', 'features_json' => '{}', 'quotas_json' => '{}', 'status' => 'active'];
+$plans ??= [];
+?>
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head>
 <meta charset="utf-8">

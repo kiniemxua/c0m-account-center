@@ -1,3 +1,4 @@
+<?php $canViewAudit = $canViewAudit ?? false; $enabled = $enabled ?? false; ?>
 <!doctype html>
 <html lang="<?= \App\Core\Localization::current() ?>">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title><?= \App\Core\t('Account settings') ?> — c0m.me</title><link rel="stylesheet" href="/assets/css/app.css"></head>
